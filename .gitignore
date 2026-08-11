@@ -1,0 +1,21 @@
+# Build output
+build/
+target/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.log
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+*.key
