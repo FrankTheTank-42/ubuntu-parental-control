@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ubuntu Parental Control Webfilter",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Verwaltete Browser-Komponente für Ubuntu Parental Control.",
   "browser_specific_settings": {
     "gecko": {
@@ -19,6 +19,21 @@
     "alarms",
     "declarativeNetRequest"
   ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked/blocked.html"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
+  ],
   "declarative_net_request": {
     "rule_resources": [
       {
@@ -30,6 +45,7 @@
   },
   "background": {
     "scripts": [
+      "common/rule-engine.js",
       "background/service-worker.js"
     ]
   }

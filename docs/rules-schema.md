@@ -51,6 +51,18 @@ prüft die Rule Engine zusätzlich:
 
 Eine ungültige neue Konfiguration ersetzt niemals die letzte gültige Version.
 
+## Verwaltung und Wiederherstellung
+
+`upcctl` validiert den vollständigen Endzustand vor jeder Änderung und ersetzt
+die aktive Datei atomar. Vor dem Ersetzen wird die bisherige gültige Fassung
+unter `/var/lib/ubuntu-parental-control/rule-history` mit Modus `0600`
+archiviert; das Verzeichnis selbst besitzt Modus `0700`. Beschädigte Fassungen
+werden nicht archiviert. Ein Rollback validiert den gewählten Snapshot erneut
+und sichert seinerseits zuerst den aktuellen Zustand.
+
+`upcctl apply DATEI --dry-run` und `upcctl rollback VERSION --dry-run` geben ein
+Diff aus, ohne die aktive Datei oder den Versionsverlauf zu verändern.
+
 ## Validator ausführen
 
 Der Validator benötigt nur Python 3 und keine zusätzlichen Pakete:

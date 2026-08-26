@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "ubuntu-parental-control-installer-m2.zip"
 PACKAGE_ROOT = "ubuntu-parental-control"
-TOP_LEVEL_FILES = {".gitignore", "LICENSE", "README.md"}
+TOP_LEVEL_FILES = {".gitignore", "LICENSE", "README.md", "RELEASE_NOTES.md"}
 TOP_LEVEL_DIRECTORIES = {
     "browser-extension",
     "config",

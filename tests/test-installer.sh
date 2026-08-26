@@ -7,7 +7,7 @@ readonly TEST_ROOT="$(mktemp -d "$PROJECT_ROOT/build/test-tmp/installer.XXXXXXXX
 trap 'rm -rf -- "$TEST_ROOT"' EXIT
 
 python3 "$PROJECT_ROOT/tools/build_extension.py" >/dev/null
-readonly XPI="$PROJECT_ROOT/dist/ubuntu-parental-control-webfilter-unsigned.xpi"
+readonly XPI="$PROJECT_ROOT/dist/ubuntu-parental-control-webfilter-firefox-unsigned.xpi"
 readonly POLICY="$TEST_ROOT/etc/firefox/policies/policies.json"
 readonly CHROME_ID="abcdefghijklmnopabcdefghijklmnop"
 readonly CHROME_POLICY="$TEST_ROOT/etc/opt/chrome/policies/managed/ubuntu-parental-control.json"
@@ -60,9 +60,15 @@ PY
 
 test -f "$TEST_ROOT/etc/firefox/policies/extensions/webfilter.xpi"
 test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/rule_validator.py"
+test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/upcctl.py"
+test -x "$TEST_ROOT/usr/sbin/upcctl"
 test -f "$TEST_ROOT/etc/ubuntu-parental-control/rules.json"
+test -d "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history"
+test "$(stat -c '%a' "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history")" = "700"
 python3 "$TEST_ROOT/usr/lib/ubuntu-parental-control/rule_validator.py" \
   "$PROJECT_ROOT/config/rules.example.json" >/dev/null
+python3 "$TEST_ROOT/usr/lib/ubuntu-parental-control/upcctl.py" \
+  --rules "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" list >/dev/null
 
 python3 - "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" <<'PY'
 import json
@@ -102,20 +108,52 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     policies = json.load(handle)["policies"]
 assert policies["DisableTelemetry"] is True
-assert "webfilter@ubuntu-parental-control.local" in policies["Extensions"]["Uninstall"]
 assert "ExtensionSettings" not in policies
+assert policies["Extensions"]["Uninstall"] == []
 PY
 
 test -f "$TEST_ROOT/var/lib/ubuntu-parental-control/install-state.json"
+python3 - "$TEST_ROOT/var/lib/ubuntu-parental-control/install-state.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    state = json.load(handle)
+assert state["firefox_uninstall_phase"] == "unlock_pending"
+assert state["uninstall_pending"] is False
+PY
+
+# Eine Eingabe bestätigt den ersten Firefox-Neustart. EOF unterbricht danach
+# absichtlich vor dem zweiten Neustart, sodass die Zwischenphase prüfbar bleibt.
+if printf '\n' | "$PROJECT_ROOT/installer/uninstall.sh" \
+  --root "$TEST_ROOT" --no-stop >/dev/null 2>&1; then
+  echo "Uninstaller wurde ohne zweiten Firefox-Neustart unerwartet abgeschlossen" >&2
+  exit 1
+fi
+python3 - "$POLICY" "$TEST_ROOT/var/lib/ubuntu-parental-control/install-state.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    policies = json.load(handle)["policies"]
+assert "webfilter@ubuntu-parental-control.local" in policies["Extensions"]["Uninstall"]
+with open(sys.argv[2], encoding="utf-8") as handle:
+    state = json.load(handle)
+assert state["firefox_uninstall_phase"] == "uninstall_pending"
+assert state["uninstall_pending"] is True
+PY
 "$PROJECT_ROOT/installer/uninstall.sh" --root "$TEST_ROOT" --no-stop --finalize >/dev/null
 cmp "$POLICY" "$TEST_ROOT/original-policy.json"
 test ! -e "$TEST_ROOT/usr/lib/ubuntu-parental-control/rule_validator.py"
+test ! -e "$TEST_ROOT/usr/lib/ubuntu-parental-control/upcctl.py"
+test ! -e "$TEST_ROOT/usr/sbin/upcctl"
+test ! -e "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history"
 test ! -e "$CHROME_POLICY"
 
 readonly EMPTY_ROOT="$TEST_ROOT/without-original-policy"
 "$PROJECT_ROOT/installer/install.sh" --root "$EMPTY_ROOT" --xpi "$XPI" --no-start >/dev/null
 "$PROJECT_ROOT/installer/uninstall.sh" --root "$EMPTY_ROOT" --no-stop --prepare-only >/dev/null
 test -f "$EMPTY_ROOT/etc/firefox/policies/policies.json"
+printf '\n' | "$PROJECT_ROOT/installer/uninstall.sh" \
+  --root "$EMPTY_ROOT" --no-stop >/dev/null 2>&1 || true
 "$PROJECT_ROOT/installer/uninstall.sh" --root "$EMPTY_ROOT" --no-stop --finalize >/dev/null
 test ! -e "$EMPTY_ROOT/etc/firefox/policies/policies.json"
 
@@ -131,13 +169,15 @@ cp "$EXISTING_CHROME_POLICY" "$EXISTING_CHROME_ROOT/original-chrome-policy.json"
   --no-start >/dev/null
 "$PROJECT_ROOT/installer/uninstall.sh" \
   --root "$EXISTING_CHROME_ROOT" --no-stop --prepare-only >/dev/null
+printf '\n' | "$PROJECT_ROOT/installer/uninstall.sh" \
+  --root "$EXISTING_CHROME_ROOT" --no-stop >/dev/null 2>&1 || true
 "$PROJECT_ROOT/installer/uninstall.sh" \
   --root "$EXISTING_CHROME_ROOT" --no-stop --finalize >/dev/null
 cmp "$EXISTING_CHROME_POLICY" "$EXISTING_CHROME_ROOT/original-chrome-policy.json"
 
 readonly ONE_COMMAND_ROOT="$TEST_ROOT/one-command"
 "$PROJECT_ROOT/installer/install.sh" --root "$ONE_COMMAND_ROOT" --xpi "$XPI" --no-start >/dev/null
-printf '\n' | "$PROJECT_ROOT/installer/uninstall.sh" --root "$ONE_COMMAND_ROOT" --no-stop >/dev/null
+printf '\n\n' | "$PROJECT_ROOT/installer/uninstall.sh" --root "$ONE_COMMAND_ROOT" --no-stop >/dev/null
 test ! -e "$ONE_COMMAND_ROOT/etc/firefox/policies/policies.json"
 
 if "$PROJECT_ROOT/installer/install.sh" --root relative/path --xpi "$XPI" --no-start >/dev/null 2>&1; then

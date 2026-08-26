@@ -80,6 +80,7 @@ path, expected_id = sys.argv[1:]
 try:
     with zipfile.ZipFile(path) as archive:
         manifest = json.loads(archive.read("manifest.json"))
+        archive_names = set(archive.namelist())
 except (OSError, KeyError, ValueError, zipfile.BadZipFile) as exc:
     raise SystemExit(f"Fehler: ungültiges XPI: {exc}")
 actual_id = manifest.get("browser_specific_settings", {}).get("gecko", {}).get("id")
@@ -90,11 +91,17 @@ try:
     version_tuple = tuple(int(part) for part in version.split("."))
 except (AttributeError, ValueError):
     raise SystemExit(f"Fehler: ungültige XPI-Version {version!r}")
-if version_tuple < (0, 2, 0):
-    raise SystemExit("Fehler: XPI ist älter als 0.2.0 und enthält den Webfilter noch nicht")
+if version_tuple < (0, 2, 1):
+    raise SystemExit("Fehler: XPI ist älter als 0.2.1 und enthält den Firefox-Startfix noch nicht")
 required = {"storage", "alarms", "declarativeNetRequest"}
 if not required.issubset(set(manifest.get("permissions", []))):
     raise SystemExit("Fehler: XPI enthält nicht alle benötigten Webfilter-Berechtigungen")
+if version_tuple >= (0, 2, 2):
+    required_hosts = {"http://*/*", "https://*/*"}
+    if not required_hosts.issubset(set(manifest.get("host_permissions", []))):
+        raise SystemExit("Fehler: XPI enthält nicht alle für die Blockseite benötigten Host-Berechtigungen")
+    if not {"blocked/blocked.html", "blocked/blocked.css"}.issubset(archive_names):
+        raise SystemExit("Fehler: XPI enthält die Blockseite nicht vollständig")
 PY
 
 prefix_path() {
@@ -109,7 +116,9 @@ readonly ETC_DIR="$(prefix_path /etc/ubuntu-parental-control)"
 readonly POLICY_FILE="$(prefix_path /etc/firefox/policies/policies.json)"
 readonly EXTENSION_DIR="$(prefix_path /etc/firefox/policies/extensions)"
 readonly LIB_DIR="$(prefix_path /usr/lib/ubuntu-parental-control)"
+readonly UPCCTL="$(prefix_path /usr/sbin/upcctl)"
 readonly STATE_DIR="$(prefix_path /var/lib/ubuntu-parental-control)"
+readonly RULE_HISTORY_DIR="$STATE_DIR/rule-history"
 readonly SYSTEMD_DIR="$(prefix_path /etc/systemd/system)"
 readonly STATE_FILE="$STATE_DIR/install-state.json"
 readonly BACKUP_FILE="$STATE_DIR/policies.json.before-install"
@@ -119,6 +128,7 @@ readonly LEGACY_XPI="$(prefix_path /usr/local/share/ubuntu-parental-control/webf
 
 install -d -m 0755 "$ETC_DIR" "$(dirname "$POLICY_FILE")" "$EXTENSION_DIR" "$LIB_DIR" "$SYSTEMD_DIR"
 install -d -m 0700 "$STATE_DIR"
+install -d -m 0700 "$RULE_HISTORY_DIR"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   if [[ -f "$POLICY_FILE" ]]; then
@@ -153,6 +163,8 @@ fi
 install -m 0755 "$PROJECT_ROOT/daemon/daemon.py" "$LIB_DIR/daemon.py"
 install -m 0755 "$PROJECT_ROOT/daemon/rule_validator.py" "$LIB_DIR/rule_validator.py"
 install -m 0755 "$PROJECT_ROOT/daemon/managed_policy.py" "$LIB_DIR/managed_policy.py"
+install -m 0755 "$PROJECT_ROOT/daemon/upcctl.py" "$LIB_DIR/upcctl.py"
+install -D -m 0755 "$PROJECT_ROOT/installer/upcctl" "$UPCCTL"
 install -m 0644 "$PROJECT_ROOT/daemon/ubuntu-parental-control.service" "$SYSTEMD_DIR/ubuntu-parental-control.service"
 install -m 0644 "$xpi_path" "$EXTENSION_DIR/webfilter.xpi"
 

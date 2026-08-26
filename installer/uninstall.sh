@@ -59,6 +59,7 @@ prefix_path() {
 
 readonly POLICY_FILE="$(prefix_path /etc/firefox/policies/policies.json)"
 readonly STATE_DIR="$(prefix_path /var/lib/ubuntu-parental-control)"
+readonly RULE_HISTORY_DIR="$STATE_DIR/rule-history"
 readonly STATE_FILE="$STATE_DIR/install-state.json"
 readonly BACKUP_FILE="$STATE_DIR/policies.json.before-install"
 readonly CHROME_POLICY="$(prefix_path /etc/opt/chrome/policies/managed/ubuntu-parental-control.json)"
@@ -66,7 +67,7 @@ readonly CHROME_BACKUP="$STATE_DIR/chrome-policy.json.before-install"
 
 [[ -f "$STATE_FILE" ]] || die "Installationsstatus fehlt; automatische Wiederherstellung ist nicht sicher"
 
-read_state() {
+read_state_bool() {
   python3 - "$STATE_FILE" "$1" <<'PY'
 import json
 import sys
@@ -76,9 +77,26 @@ print("true" if value else "false")
 PY
 }
 
-policy_existed="$(read_state policy_existed)"
-chrome_policy_existed="$(read_state chrome_policy_existed)"
-uninstall_pending="$(read_state uninstall_pending)"
+read_state_value() {
+  python3 - "$STATE_FILE" "$1" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    value = json.load(handle).get(sys.argv[2], "")
+print(value if isinstance(value, str) else "")
+PY
+}
+
+policy_existed="$(read_state_bool policy_existed)"
+chrome_policy_existed="$(read_state_bool chrome_policy_existed)"
+uninstall_pending="$(read_state_bool uninstall_pending)"
+uninstall_phase="$(read_state_value firefox_uninstall_phase)"
+
+# Statusdateien der vorherigen Uninstaller-Version hatten nur diesen booleschen
+# Marker. Sie befanden sich bereits in der eigentlichen Uninstall-Phase.
+if [[ -z "$uninstall_phase" && "$uninstall_pending" == true ]]; then
+  uninstall_phase="uninstall_pending"
+fi
 
 restore_original_policy() {
   if [[ "$policy_existed" == true ]]; then
@@ -112,9 +130,60 @@ finish_uninstall() {
   echo "Deinstallation abgeschlossen; ursprüngliche Firefox-Policy wiederhergestellt."
 }
 
-wait_for_firefox_restart() {
+write_uninstall_phase() {
+  python3 - "$STATE_FILE" "$1" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open(encoding="utf-8") as handle:
+    state = json.load(handle)
+state["firefox_uninstall_phase"] = sys.argv[2]
+state["uninstall_pending"] = sys.argv[2] == "uninstall_pending"
+temporary = path.with_suffix(".tmp")
+with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+    json.dump(state, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+os.chmod(temporary, 0o600)
+temporary.replace(path)
+PY
+}
+
+write_firefox_policy() {
+  local phase="$1"
+  local base_arguments=()
+  if [[ "$policy_existed" == true ]]; then
+    [[ -f "$BACKUP_FILE" ]] || die "Policy-Backup fehlt; Abbruch zum Schutz vorhandener Daten"
+    base_arguments=(--base "$BACKUP_FILE")
+  fi
+  python3 "$PROJECT_ROOT/installer/prepare_firefox_uninstall.py" \
+    "${base_arguments[@]}" \
+    --output "$POLICY_FILE" \
+    --extension-id "$EXTENSION_ID" \
+    --phase "$phase"
+}
+
+wait_for_unlock_restart() {
   echo
-  echo "Firefox muss die Extension jetzt einmal selbst entfernen."
+  echo "Firefox muss die bisher erzwungene Extension zuerst freigeben."
+  echo "1. Firefox in jedem betroffenen Benutzerkonto vollständig starten."
+  echo "2. Firefox wieder vollständig schließen."
+  echo
+  if ! read -r -p "Danach hier die Eingabetaste drücken, um die Entfernung vorzubereiten: "; then
+    echo >&2
+    echo "Der Uninstaller wurde unterbrochen. Nach dem Firefox-Neustart einfach erneut ausführen." >&2
+    exit 2
+  fi
+  write_firefox_policy uninstall
+  write_uninstall_phase uninstall_pending
+  echo "Firefox-Uninstall-Policy aktiviert."
+}
+
+wait_for_uninstall_restart() {
+  echo
+  echo "Firefox muss die Extension jetzt selbst entfernen."
   echo "1. Firefox in jedem betroffenen Benutzerkonto vollständig starten."
   echo "2. Prüfen, dass die Extension unter about:addons verschwunden ist."
   echo "3. Firefox wieder vollständig schließen."
@@ -128,17 +197,28 @@ wait_for_firefox_restart() {
 }
 
 if [[ "$finalize" == true ]]; then
-  [[ "$uninstall_pending" == true ]] || die "keine ausstehende Firefox-Deinstallation gefunden"
+  [[ "$uninstall_phase" == "uninstall_pending" ]] || \
+    die "Firefox muss vor dem Finalisieren beide Deinstallationsphasen verarbeiten"
   finish_uninstall
   exit 0
 fi
 
-if [[ "$uninstall_pending" == true ]]; then
+if [[ "$uninstall_phase" == "unlock_pending" ]]; then
   if [[ "$prepare_only" == true ]]; then
-    die "Deinstallation wartet bereits auf einen Firefox-Neustart"
+    die "Deinstallation wartet auf den Firefox-Neustart zum Freigeben der Extension"
   fi
   echo "Eine unterbrochene Deinstallation wird fortgesetzt."
-  wait_for_firefox_restart
+  wait_for_unlock_restart
+  wait_for_uninstall_restart
+  exit 0
+fi
+
+if [[ "$uninstall_phase" == "uninstall_pending" ]]; then
+  if [[ "$prepare_only" == true ]]; then
+    die "Deinstallation wartet auf den Firefox-Neustart zum Entfernen der Extension"
+  fi
+  echo "Eine unterbrochene Deinstallation wird fortgesetzt."
+  wait_for_uninstall_restart
   exit 0
 fi
 
@@ -150,39 +230,17 @@ if [[ "$root_prefix" == "/" ]]; then
   fi
 fi
 
-base_arguments=()
-if [[ "$policy_existed" == true ]]; then
-  [[ -f "$BACKUP_FILE" ]] || die "Policy-Backup fehlt; Abbruch zum Schutz vorhandener Daten"
-  base_arguments=(--base "$BACKUP_FILE")
-fi
-python3 "$PROJECT_ROOT/installer/prepare_firefox_uninstall.py" \
-  "${base_arguments[@]}" \
-  --output "$POLICY_FILE" \
-  --extension-id "$EXTENSION_ID"
-
-python3 - "$STATE_FILE" <<'PY'
-import json
-import os
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-with path.open(encoding="utf-8") as handle:
-    state = json.load(handle)
-state["uninstall_pending"] = True
-temporary = path.with_suffix(".tmp")
-with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-    json.dump(state, handle, indent=2, sort_keys=True)
-    handle.write("\n")
-os.chmod(temporary, 0o600)
-temporary.replace(path)
-PY
+write_firefox_policy unlock
+write_uninstall_phase unlock_pending
 
 rm -f -- "$(prefix_path /etc/systemd/system/ubuntu-parental-control.service)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/daemon.py)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/rule_validator.py)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/managed_policy.py)"
+rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/upcctl.py)"
+rm -f -- "$(prefix_path /usr/sbin/upcctl)"
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/rules.last-known-good.json)"
+rm -rf -- "$RULE_HISTORY_DIR"
 rm -f -- "$(prefix_path /etc/firefox/policies/extensions/webfilter.xpi)"
 rm -f -- "$(prefix_path /usr/local/share/ubuntu-parental-control/webfilter.xpi)"
 rm -f -- "$(prefix_path /etc/ubuntu-parental-control/config.json)"
@@ -200,8 +258,9 @@ if [[ "$root_prefix" == "/" ]]; then
   systemctl daemon-reload
 fi
 
-echo "Firefox-Deinstallation vorbereitet."
+echo "Firefox-Freigabephase vorbereitet."
 if [[ "$prepare_only" == true ]]; then
   exit 0
 fi
-wait_for_firefox_restart
+wait_for_unlock_restart
+wait_for_uninstall_restart

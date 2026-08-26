@@ -1,6 +1,14 @@
 "use strict";
 
-importScripts("../common/rule-engine.js");
+// Chrome loads only this MV3 service worker and therefore needs importScripts.
+// Firefox loads the shared engine first through background.scripts; its
+// background event-page context does not provide importScripts.
+if (typeof globalThis.UPC_RULE_ENGINE === "undefined") {
+  if (typeof globalThis.importScripts !== "function") {
+    throw new Error("Ubuntu Parental Control: gemeinsame Regelengine fehlt");
+  }
+  globalThis.importScripts("../common/rule-engine.js");
+}
 
 const api = globalThis.browser ?? globalThis.chrome;
 const FAILSAFE_RULESET = "failsafe";

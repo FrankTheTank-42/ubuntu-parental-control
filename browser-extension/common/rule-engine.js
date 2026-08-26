@@ -5,6 +5,7 @@
 globalThis.UPC_RULE_ENGINE = (() => {
   const DAY_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
   const MAX_DYNAMIC_RULES = 5000;
+  const BLOCKED_PAGE = "/blocked/blocked.html";
 
   function assert(condition, message) {
     if (!condition) throw new Error(message);
@@ -147,7 +148,10 @@ globalThis.UPC_RULE_ENGINE = (() => {
         `Block ${block.id}: URL-Pattern-/Regex-Ausnahmen sind mit DNR nicht verlustfrei darstellbar`,
       );
       const excluded = exceptions.domains;
-      const action = { type: block.action };
+      const action =
+        block.action === "block"
+          ? { type: "redirect", redirect: { extensionPath: BLOCKED_PAGE } }
+          : { type: "allow" };
       const priority = dnrPriority(block);
       for (const domain of block.targets.domains) {
         output.push({

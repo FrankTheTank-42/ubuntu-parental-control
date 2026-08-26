@@ -11,7 +11,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "browser-extension"
 FIREFOX_OUTPUT = ROOT / "dist" / "ubuntu-parental-control-webfilter-firefox-unsigned.xpi"
-LEGACY_FIREFOX_OUTPUT = ROOT / "dist" / "ubuntu-parental-control-webfilter-unsigned.xpi"
 CHROME_OUTPUT = ROOT / "dist" / "ubuntu-parental-control-webfilter-chrome.zip"
 
 
@@ -36,13 +35,27 @@ def build_archive(output: Path, manifest_path: Path) -> None:
 def main() -> None:
     firefox_manifest = SOURCE / "manifest.json"
     chrome_manifest = SOURCE / "manifest.chrome.json"
-    manifest = json.loads(firefox_manifest.read_text(encoding="utf-8"))
-    if manifest["browser_specific_settings"]["gecko"]["id"] != "webfilter@ubuntu-parental-control.local":
+    firefox = json.loads(firefox_manifest.read_text(encoding="utf-8"))
+    chrome = json.loads(chrome_manifest.read_text(encoding="utf-8"))
+    if firefox["browser_specific_settings"]["gecko"]["id"] != "webfilter@ubuntu-parental-control.local":
         raise SystemExit("unerwartete Extension-ID")
+    if firefox["version"] != chrome["version"]:
+        raise SystemExit("Firefox- und Chrome-Version stimmen nicht überein")
+    if firefox.get("background", {}).get("scripts") != [
+        "common/rule-engine.js",
+        "background/service-worker.js",
+    ]:
+        raise SystemExit("Firefox-Hintergrundskripte haben nicht die erforderliche Ladereihenfolge")
+    expected_hosts = ["http://*/*", "https://*/*"]
+    for browser, manifest in (("Firefox", firefox), ("Chrome", chrome)):
+        if manifest.get("host_permissions") != expected_hosts:
+            raise SystemExit(f"{browser}-Hostberechtigungen sind für die Blockseite unvollständig")
+        accessible = manifest.get("web_accessible_resources", [])
+        if not any("blocked/blocked.html" in entry.get("resources", []) for entry in accessible):
+            raise SystemExit(f"{browser}-Manifest veröffentlicht die Blockseite nicht")
     build_archive(FIREFOX_OUTPUT, firefox_manifest)
-    # Keep the old output name for existing installer scripts and callers.
-    build_archive(LEGACY_FIREFOX_OUTPUT, firefox_manifest)
     build_archive(CHROME_OUTPUT, chrome_manifest)
+    print(f"Extension-Version {firefox['version']}")
     print(FIREFOX_OUTPUT)
     print(CHROME_OUTPUT)
     print("Hinweis: Das XPI muss vor Firefox Release über AMO signiert werden.")

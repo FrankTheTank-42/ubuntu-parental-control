@@ -45,14 +45,21 @@ Die gemeinsame Extension-Regelengine:
 Höhere Blockprioritäten erzeugen höhere DNR-Prioritäten. Bei derselben
 Blockpriorität erhält `block` eine um eins höhere DNR-Priorität als `allow`.
 
-## Fail-safe
+## Blockseite und Fail-safe
+
+Explizite Blockregeln leiten HTTP(S)-Navigation auf die paketierte Seite
+`/blocked/blocked.html` um. Beide Manifeste deklarieren dafür ausschließlich
+HTTP(S)-Hostberechtigungen und veröffentlichen die HTML-Datei als
+`web_accessible_resources`. Die Seite enthält keine externen Ressourcen und
+keinen ausführbaren Code. Sie zeigt nur einen verständlichen Hinweis; besuchte
+URLs werden weder gelesen noch gespeichert oder übertragen.
 
 Das signierte Extension-Paket enthält einen standardmäßig aktiven statischen
-Regelsatz, der HTTP(S)-Navigation in Haupt- und Unterframes blockiert. Bei einer
-Konfiguration mit `default_action: allow` wird er erst nach erfolgreicher
-Installation aller dynamischen Regeln deaktiviert. Bei `default_action: block`
-bleibt er als Default-Deny-Regel aktiv; höher priorisierte dynamische
-Allow-Regeln bilden die Freigaben.
+Regelsatz, der HTTP(S)-Navigation in Haupt- und Unterframes auf dieselbe lokale
+Blockseite umleitet. Bei einer Konfiguration mit `default_action: allow` wird er
+erst nach erfolgreicher Installation aller dynamischen Regeln deaktiviert. Bei
+`default_action: block` bleibt er als Default-Deny-Regel aktiv; höher
+priorisierte dynamische Allow-Regeln bilden die Freigaben.
 
 Schlägt Lesen, Prüfsummenprüfung, Regex-Prüfung oder DNR-Aktivierung fehl, wird
 der statische Regelsatz aktiviert und werden dynamische Regeln entfernt. Damit

@@ -69,10 +69,11 @@ const allowTie = compiled.rules.find(
   (rule) => rule.action.type === "allow" && rule.condition.requestDomains[0] === "same.example",
 );
 const blockTie = compiled.rules.find(
-  (rule) => rule.action.type === "block" && rule.condition.requestDomains[0] === "same.example",
+  (rule) => rule.action.type === "redirect" && rule.condition.requestDomains[0] === "same.example",
 );
 assert.ok(allowHigh.priority > blockTie.priority);
 assert.ok(blockTie.priority > allowTie.priority);
+assert.equal(blockTie.action.redirect.extensionPath, "/blocked/blocked.html");
 assert.deepEqual(blockTie.condition.excludedRequestDomains, ["education.video.example"]);
 
 const patternRule = engine.compile(
