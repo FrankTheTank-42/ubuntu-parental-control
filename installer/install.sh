@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly EXTENSION_ID="webfilter@ubuntu-parental-control.local"
+readonly PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+root_prefix="/"
+xpi_path=""
+chrome_extension_id=""
+chrome_update_url="https://clients2.google.com/service/update2/crx"
+start_service=true
+
+usage() {
+  echo "Verwendung: sudo $0 --xpi PFAD [--chrome-extension-id ID] [--chrome-update-url URL] [--root TESTZIEL] [--no-start]"
+}
+
+die() {
+  echo "Fehler: $*" >&2
+  exit 1
+}
+
+while (($#)); do
+  case "$1" in
+    --xpi)
+      (($# >= 2)) || die "--xpi benötigt einen Pfad"
+      xpi_path="$2"
+      shift 2
+      ;;
+    --root)
+      (($# >= 2)) || die "--root benötigt einen Pfad"
+      [[ -n "$2" && "$2" == /* ]] || die "--root muss ein absoluter, nicht leerer Pfad sein"
+      root_prefix="${2%/}"
+      [[ -n "$root_prefix" ]] || root_prefix="/"
+      shift 2
+      ;;
+    --chrome-extension-id)
+      (($# >= 2)) || die "--chrome-extension-id benötigt eine ID"
+      chrome_extension_id="$2"
+      shift 2
+      ;;
+    --chrome-update-url)
+      (($# >= 2)) || die "--chrome-update-url benötigt eine URL"
+      chrome_update_url="$2"
+      shift 2
+      ;;
+    --no-start)
+      start_service=false
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unbekannte Option: $1"
+      ;;
+  esac
+done
+
+[[ -n "$xpi_path" ]] || die "--xpi ist erforderlich (Firefox Stable benötigt ein signiertes XPI)"
+[[ -f "$xpi_path" ]] || die "XPI nicht gefunden: $xpi_path"
+command -v python3 >/dev/null || die "python3 fehlt"
+if [[ -n "$chrome_extension_id" && ! "$chrome_extension_id" =~ ^[a-p]{32}$ ]]; then
+  die "Chrome-Extension-ID muss aus 32 Zeichen a-p bestehen"
+fi
+if [[ "$chrome_update_url" != https://* ]]; then
+  die "Chrome-Update-URL muss HTTPS verwenden"
+fi
+
+if [[ "$root_prefix" == "/" && ${EUID} -ne 0 ]]; then
+  die "die Systeminstallation muss als root laufen"
+fi
+
+python3 - "$xpi_path" "$EXTENSION_ID" <<'PY'
+import json
+import sys
+import zipfile
+
+path, expected_id = sys.argv[1:]
+try:
+    with zipfile.ZipFile(path) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+except (OSError, KeyError, ValueError, zipfile.BadZipFile) as exc:
+    raise SystemExit(f"Fehler: ungültiges XPI: {exc}")
+actual_id = manifest.get("browser_specific_settings", {}).get("gecko", {}).get("id")
+if actual_id != expected_id:
+    raise SystemExit(f"Fehler: XPI-ID ist {actual_id!r}, erwartet wird {expected_id!r}")
+version = manifest.get("version", "0")
+try:
+    version_tuple = tuple(int(part) for part in version.split("."))
+except (AttributeError, ValueError):
+    raise SystemExit(f"Fehler: ungültige XPI-Version {version!r}")
+if version_tuple < (0, 2, 0):
+    raise SystemExit("Fehler: XPI ist älter als 0.2.0 und enthält den Webfilter noch nicht")
+required = {"storage", "alarms", "declarativeNetRequest"}
+if not required.issubset(set(manifest.get("permissions", []))):
+    raise SystemExit("Fehler: XPI enthält nicht alle benötigten Webfilter-Berechtigungen")
+PY
+
+prefix_path() {
+  if [[ "$root_prefix" == "/" ]]; then
+    printf '%s' "$1"
+  else
+    printf '%s%s' "$root_prefix" "$1"
+  fi
+}
+
+readonly ETC_DIR="$(prefix_path /etc/ubuntu-parental-control)"
+readonly POLICY_FILE="$(prefix_path /etc/firefox/policies/policies.json)"
+readonly EXTENSION_DIR="$(prefix_path /etc/firefox/policies/extensions)"
+readonly LIB_DIR="$(prefix_path /usr/lib/ubuntu-parental-control)"
+readonly STATE_DIR="$(prefix_path /var/lib/ubuntu-parental-control)"
+readonly SYSTEMD_DIR="$(prefix_path /etc/systemd/system)"
+readonly STATE_FILE="$STATE_DIR/install-state.json"
+readonly BACKUP_FILE="$STATE_DIR/policies.json.before-install"
+readonly CHROME_POLICY="$(prefix_path /etc/opt/chrome/policies/managed/ubuntu-parental-control.json)"
+readonly CHROME_BACKUP="$STATE_DIR/chrome-policy.json.before-install"
+readonly LEGACY_XPI="$(prefix_path /usr/local/share/ubuntu-parental-control/webfilter.xpi)"
+
+install -d -m 0755 "$ETC_DIR" "$(dirname "$POLICY_FILE")" "$EXTENSION_DIR" "$LIB_DIR" "$SYSTEMD_DIR"
+install -d -m 0700 "$STATE_DIR"
+
+if [[ ! -f "$STATE_FILE" ]]; then
+  if [[ -f "$POLICY_FILE" ]]; then
+    install -m 0600 "$POLICY_FILE" "$BACKUP_FILE"
+    policy_existed=true
+  else
+    policy_existed=false
+  fi
+  if [[ -f "$CHROME_POLICY" ]]; then
+    install -m 0600 "$CHROME_POLICY" "$CHROME_BACKUP"
+    chrome_policy_existed=true
+  else
+    chrome_policy_existed=false
+  fi
+  printf '{"chrome_policy_existed": %s, "policy_existed": %s}\n' \
+    "$chrome_policy_existed" "$policy_existed" > "$STATE_FILE"
+  chmod 0600 "$STATE_FILE"
+fi
+
+config_arguments=(
+  --template "$PROJECT_ROOT/config/config.json"
+  --output "$ETC_DIR/config.json"
+  --chrome-update-url "$chrome_update_url"
+)
+if [[ -n "$chrome_extension_id" ]]; then
+  config_arguments+=(--chrome-extension-id "$chrome_extension_id")
+fi
+python3 "$PROJECT_ROOT/installer/write_runtime_config.py" "${config_arguments[@]}"
+if [[ ! -f "$ETC_DIR/rules.json" ]]; then
+  install -m 0644 "$PROJECT_ROOT/config/rules.json" "$ETC_DIR/rules.json"
+fi
+install -m 0755 "$PROJECT_ROOT/daemon/daemon.py" "$LIB_DIR/daemon.py"
+install -m 0755 "$PROJECT_ROOT/daemon/rule_validator.py" "$LIB_DIR/rule_validator.py"
+install -m 0755 "$PROJECT_ROOT/daemon/managed_policy.py" "$LIB_DIR/managed_policy.py"
+install -m 0644 "$PROJECT_ROOT/daemon/ubuntu-parental-control.service" "$SYSTEMD_DIR/ubuntu-parental-control.service"
+install -m 0644 "$xpi_path" "$EXTENSION_DIR/webfilter.xpi"
+
+if [[ "$root_prefix" == "/" ]]; then
+  install_url="file:///etc/firefox/policies/extensions/webfilter.xpi"
+else
+  install_url="file://$EXTENSION_DIR/webfilter.xpi"
+fi
+
+python3 "$PROJECT_ROOT/installer/merge_firefox_policy.py" \
+  --input "$POLICY_FILE" \
+  --output "$POLICY_FILE" \
+  --extension-id "$EXTENSION_ID" \
+  --install-url "$install_url"
+
+# Migration von Version 0.1: Dieser Ablageort ist für Firefox als Ubuntu-Snap
+# nicht lesbar. Erst nach erfolgreichem Policy-Update entfernen.
+rm -f -- "$LEGACY_XPI"
+rmdir --ignore-fail-on-non-empty "$(dirname "$LEGACY_XPI")" 2>/dev/null || true
+
+python3 "$LIB_DIR/daemon.py" \
+  --config "$ETC_DIR/config.json" \
+  --rules "$ETC_DIR/rules.json" \
+  --check
+
+python3 "$LIB_DIR/managed_policy.py" \
+  --config "$ETC_DIR/config.json" \
+  --rules "$ETC_DIR/rules.json" \
+  --firefox-policy "$POLICY_FILE" \
+  --chrome-policy "$CHROME_POLICY"
+
+if [[ "$root_prefix" == "/" ]]; then
+  systemctl daemon-reload
+  systemctl enable ubuntu-parental-control.service
+  if [[ "$start_service" == true ]]; then
+    systemctl restart ubuntu-parental-control.service
+  fi
+fi
+
+echo "Installation abgeschlossen. Firefox vollständig neu starten und about:policies prüfen."

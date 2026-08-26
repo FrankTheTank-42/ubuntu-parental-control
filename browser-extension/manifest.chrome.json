@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Ubuntu Parental Control Webfilter",
+  "version": "0.2.0",
+  "description": "Verwaltete Browser-Komponente für Ubuntu Parental Control.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "declarativeNetRequest"
+  ],
+  "storage": {
+    "managed_schema": "managed-policy.schema.json"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "failsafe",
+        "enabled": true,
+        "path": "rules/failsafe.json"
+      }
+    ]
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  }
+}

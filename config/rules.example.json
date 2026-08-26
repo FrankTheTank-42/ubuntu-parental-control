@@ -1,0 +1,119 @@
+{
+  "$schema": "../schema/parental-rules.schema.json",
+  "format_version": "1.0",
+  "profile": {
+    "timezone": "Europe/Berlin",
+    "default_action": "allow",
+    "conflict_policy": "priority_then_deny"
+  },
+  "blocks": [
+    {
+      "id": "social-school-hours",
+      "name": "Video und Social Media",
+      "enabled": true,
+      "priority": 0,
+      "action": "block",
+      "user_permissions": {
+        "add_domains": false,
+        "remove_domains": false,
+        "add_url_patterns": false,
+        "add_url_regex": false,
+        "modify_exceptions": false,
+        "modify_schedule": false,
+        "disable_block": false
+      },
+      "targets": {
+        "domains": [
+          "instagram.com",
+          "tiktok.com",
+          "youtube.com"
+        ],
+        "url_patterns": [
+          "*://reddit.com/r/gaming/*"
+        ],
+        "url_regex": [
+          {
+            "pattern": "^https?://(?:www\\.)?youtube\\.com/(shorts|watch)",
+            "case_sensitive": false
+          }
+        ]
+      },
+      "exceptions": {
+        "domains": [
+          "education.youtube.com"
+        ],
+        "url_patterns": [],
+        "url_regex": []
+      },
+      "schedule": {
+        "timezone": "Europe/Berlin",
+        "windows": [
+          {
+            "start": "08:00",
+            "end": "16:00",
+            "rrule": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+          }
+        ]
+      },
+      "limits": null
+    },
+    {
+      "id": "self-blocked-sites",
+      "name": "Eigene Ablenkungen",
+      "enabled": true,
+      "priority": 0,
+      "action": "block",
+      "user_permissions": {
+        "add_domains": true,
+        "remove_domains": false,
+        "add_url_patterns": false,
+        "add_url_regex": false,
+        "modify_exceptions": false,
+        "modify_schedule": false,
+        "disable_block": false
+      },
+      "targets": {
+        "domains": [
+          "twitch.tv"
+        ],
+        "url_patterns": [],
+        "url_regex": []
+      },
+      "exceptions": {
+        "domains": [],
+        "url_patterns": [],
+        "url_regex": []
+      },
+      "limits": null
+    },
+    {
+      "id": "allow-school-youtube",
+      "name": "YouTube-Schulbereich",
+      "enabled": true,
+      "priority": 100,
+      "action": "allow",
+      "user_permissions": {
+        "add_domains": false,
+        "remove_domains": false,
+        "add_url_patterns": false,
+        "add_url_regex": false,
+        "modify_exceptions": false,
+        "modify_schedule": false,
+        "disable_block": false
+      },
+      "targets": {
+        "domains": [
+          "education.youtube.com"
+        ],
+        "url_patterns": [],
+        "url_regex": []
+      },
+      "exceptions": {
+        "domains": [],
+        "url_patterns": [],
+        "url_regex": []
+      },
+      "limits": null
+    }
+  ]
+}

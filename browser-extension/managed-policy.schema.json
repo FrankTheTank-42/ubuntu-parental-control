@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "type": "integer"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "snapshot_json": {
+      "type": "string"
+    }
+  }
+}

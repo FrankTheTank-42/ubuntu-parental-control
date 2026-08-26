@@ -1,0 +1,24 @@
+[Unit]
+Description=Ubuntu Parental Control daemon
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/lib/ubuntu-parental-control/daemon.py --config /etc/ubuntu-parental-control/config.json --rules /etc/ubuntu-parental-control/rules.json --last-good /var/lib/ubuntu-parental-control/rules.last-known-good.json --firefox-policy /etc/firefox/policies/policies.json --chrome-policy /etc/opt/chrome/policies/managed/ubuntu-parental-control.json
+Restart=on-failure
+RestartSec=2s
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/ubuntu-parental-control /etc/firefox/policies -/etc/opt/chrome/policies/managed
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

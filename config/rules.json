@@ -1,0 +1,9 @@
+{
+  "format_version": "1.0",
+  "profile": {
+    "timezone": "Europe/Berlin",
+    "default_action": "allow",
+    "conflict_policy": "priority_then_deny"
+  },
+  "blocks": []
+}

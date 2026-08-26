@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "managed_browsers": [
+    "firefox"
+  ],
+  "chrome_extension_id": null,
+  "chrome_update_url": null
+}

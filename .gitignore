@@ -1,0 +1,13 @@
+dist/
+build/
+*.xpi
+*.crx
+ubuntu-parental-control-installer-*.zip
+*.log
+*.sqlite
+*.sqlite3
+*.py[cod]
+.env
+.idea/
+.vscode/
+__pycache__/
