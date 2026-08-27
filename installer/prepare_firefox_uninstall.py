@@ -33,6 +33,8 @@ def main() -> None:
     # ID darf die temporäre Deinstallation nicht überstimmen. Beim Finalisieren
     # wird das Original bytegenau zurückgespielt.
     settings = policies.get("ExtensionSettings")
+    if settings is not None and not isinstance(settings, dict):
+        raise ValueError("'ExtensionSettings' muss ein JSON-Objekt sein")
     if isinstance(settings, dict):
         settings.pop(args.extension_id, None)
         if not settings:
@@ -60,6 +62,13 @@ def main() -> None:
             if extension_id != args.extension_id
         ]
     else:
+        settings = policies.setdefault("ExtensionSettings", {})
+        if not isinstance(settings, dict):
+            raise ValueError("'ExtensionSettings' muss ein JSON-Objekt sein")
+        # `blocked` is continuously enforced and removes an already installed
+        # add-on. Keep the legacy Uninstall list as a second supported removal
+        # path for Firefox versions/profiles that already know the extension.
+        settings[args.extension_id] = {"installation_mode": "blocked"}
         if extensions is None:
             extensions = {}
             policies["Extensions"] = extensions

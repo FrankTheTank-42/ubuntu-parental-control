@@ -130,6 +130,22 @@ finish_uninstall() {
   echo "Deinstallation abgeschlossen; ursprüngliche Firefox-Policy wiederhergestellt."
 }
 
+verify_firefox_removed() {
+  local output
+  if output="$(python3 "$PROJECT_ROOT/installer/check_firefox_extension.py" \
+    --root "$root_prefix" \
+    --extension-id "$EXTENSION_ID" 2>&1)"; then
+    echo "$output"
+    return 0
+  fi
+  echo "$output" >&2
+  echo >&2
+  echo "Die Firefox-Uninstall-Policy bleibt aktiv." >&2
+  echo "Firefox in allen betroffenen Konten vollständig starten und wieder schließen," >&2
+  echo "danach uninstall.sh erneut ausführen." >&2
+  return 1
+}
+
 write_uninstall_phase() {
   python3 - "$STATE_FILE" "$1" <<'PY'
 import json
@@ -188,10 +204,13 @@ wait_for_uninstall_restart() {
   echo "2. Prüfen, dass die Extension unter about:addons verschwunden ist."
   echo "3. Firefox wieder vollständig schließen."
   echo
-  if ! read -r -p "Danach hier die Eingabetaste drücken, um automatisch aufzuräumen: "; then
+  if ! read -r -p "Danach hier die Eingabetaste drücken, um die Entfernung zu prüfen: "; then
     echo >&2
     echo "Der Uninstaller wurde unterbrochen. Nach dem Firefox-Neustart einfach erneut ausführen." >&2
     exit 2
+  fi
+  if ! verify_firefox_removed; then
+    exit 3
   fi
   finish_uninstall
 }
@@ -199,6 +218,7 @@ wait_for_uninstall_restart() {
 if [[ "$finalize" == true ]]; then
   [[ "$uninstall_phase" == "uninstall_pending" ]] || \
     die "Firefox muss vor dem Finalisieren beide Deinstallationsphasen verarbeiten"
+  verify_firefox_removed || exit 3
   finish_uninstall
   exit 0
 fi
@@ -237,9 +257,19 @@ rm -f -- "$(prefix_path /etc/systemd/system/ubuntu-parental-control.service)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/daemon.py)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/rule_validator.py)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/managed_policy.py)"
+rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/user_rules.py)"
+rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/control_server.py)"
+rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/native_host.py)"
+rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/admin_helper.py)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/upcctl.py)"
 rm -f -- "$(prefix_path /usr/sbin/upcctl)"
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/rules.last-known-good.json)"
+rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json)"
+rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json.lock)"
+rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/live-signing-key.pem)"
+rm -f -- "$(prefix_path /usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json)"
+rm -f -- "$(prefix_path /etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json)"
+rm -f -- "$(prefix_path /usr/share/polkit-1/actions/local.ubuntu-parental-control.policy)"
 rm -rf -- "$RULE_HISTORY_DIR"
 rm -f -- "$(prefix_path /etc/firefox/policies/extensions/webfilter.xpi)"
 rm -f -- "$(prefix_path /usr/local/share/ubuntu-parental-control/webfilter.xpi)"

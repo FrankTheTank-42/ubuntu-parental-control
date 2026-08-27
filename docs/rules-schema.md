@@ -31,12 +31,31 @@ Wochentage zusätzlich.
   Die Extension validiert sie zusätzlich mit
   `declarativeNetRequest.isRegexSupported()`.
 
+## Block-ID
+
+Jeder Block besitzt neben seinem frei wählbaren Anzeigenamen eine dauerhafte
+technische Kennung. Sie beginnt mit einem Kleinbuchstaben und enthält nur
+Kleinbuchstaben, Zahlen und Bindestriche, zum Beispiel `soziale-medien` oder
+`spiele-ab-20-uhr`. In der grafischen Oberfläche wird diese ID automatisch aus
+dem Anzeigenamen erzeugt. Identische Anzeigenamen sind nicht erlaubt. Erzeugen
+verschiedene Namen wegen Umlauten oder Sonderzeichen dieselbe technische ID,
+wird diese automatisch um eine Zahl ergänzt. Sie muss in der Oberfläche nicht
+manuell eingegeben werden.
+
 ## Benutzerergänzungen
 
-`user_permissions.add_domains` darf nur bei einem Block mit `action: block`
-aktiv sein. Alle anderen Benutzeränderungen sind in Version 1.0 verboten.
-Benutzerergänzungen werden später append-only außerhalb der geschützten
-Basiskonfiguration gespeichert und durch den Daemon mit ihr zusammengeführt.
+Das Feld `user_permissions.add_domains` bleibt im Format 1.0 aus
+Kompatibilitätsgründen erhalten und darf nur bei einem Block mit `action: block`
+aktiv sein. Der Dienst verwendet es nicht mehr als Schalter: Registrierte
+Kinderkonten dürfen Domains immer zu Regeln mit `action: block` ergänzen.
+Alle anderen Benutzeränderungen sind in Version 1.0 verboten.
+Benutzerergänzungen werden append-only außerhalb der geschützten
+Basiskonfiguration unter
+`/var/lib/ubuntu-parental-control/user-domains.json` gespeichert und durch den
+Daemon mit ihr zusammengeführt. Der Dienst authentifiziert das anfragende
+Linux-Konto über die Peer-UID des Unix-Sockets. Das Kinderkonto besitzt keine
+Dienstoperation zum Entfernen einer Ergänzung; dies ist ausschließlich nach
+Administratorautorisierung möglich.
 
 ## Zusätzliche Laufzeitvalidierung
 
@@ -71,8 +90,8 @@ Der Validator benötigt nur Python 3 und keine zusätzlichen Pakete:
 python3 daemon/rule_validator.py config/rules.example.json
 ```
 
-Für die spätere Anbindung an Daemon und Benutzeroberfläche steht eine
-maschinenlesbare Ausgabe zur Verfügung:
+Für Daemon, Native Host und Benutzeroberfläche steht eine maschinenlesbare
+Ausgabe zur Verfügung:
 
 ```bash
 python3 daemon/rule_validator.py --json config/rules.example.json

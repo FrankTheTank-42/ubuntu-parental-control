@@ -82,6 +82,18 @@ const patternRule = engine.compile(
 ).rules[0];
 assert.equal(patternRule.condition.isUrlFilterCaseSensitive, true);
 
+const sameNameBlocks = [
+  { ...block("streaming", 0, "block", matchers(["one.example"])), name: "Streaming" },
+  { ...block("streaming-2", 0, "block", matchers(["two.example"])), name: "Streaming" },
+];
+assert.equal(engine.compile(rules(sameNameBlocks), new Date()).rules.length, 2);
+assert.deepEqual(
+  engine
+    .compile(rules(sameNameBlocks.filter((item) => item.id !== "streaming-2")), new Date())
+    .rules.map((rule) => rule.condition.requestDomains[0]),
+  ["one.example"],
+);
+
 assert.throws(
   () =>
     engine.compile(

@@ -23,10 +23,25 @@ const chromeManifest = JSON.parse(
 const failSafeRules = JSON.parse(
   fs.readFileSync(path.join(projectRoot, "browser-extension/rules/failsafe.json"), "utf8"),
 );
+const optionsHtml = fs.readFileSync(
+  path.join(projectRoot, "browser-extension/options/options.html"),
+  "utf8",
+);
+const optionsSource = fs.readFileSync(
+  path.join(projectRoot, "browser-extension/options/options.js"),
+  "utf8",
+);
+
+assert.ok(optionsHtml.includes('id="busy-overlay"'));
+assert.ok(!optionsHtml.includes("admin-child-add"));
+assert.ok(optionsSource.includes('form.classList.add("locked")'));
+assert.ok(optionsSource.includes('document.body.classList.add(adminMode ? "mode-parent"'));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
-  assert.equal(manifest.version, "0.2.2");
+  assert.equal(manifest.version, "0.3.4");
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
+  assert.ok(manifest.permissions.includes("nativeMessaging"));
+  assert.equal(manifest.options_ui.page, "options/options.html");
   assert.ok(
     manifest.web_accessible_resources.some((entry) =>
       entry.resources.includes("blocked/blocked.html"),
@@ -48,6 +63,14 @@ function eventHook() {
 }
 
 function browserApi() {
+  const nativePort = {
+    onMessage: eventHook(),
+    onDisconnect: eventHook(),
+    posted: [],
+    postMessage(message) {
+      this.posted.push(message);
+    },
+  };
   return {
     alarms: {
       created: [],
@@ -68,6 +91,13 @@ function browserApi() {
       async updateStaticRules() {},
     },
     runtime: {
+      lastError: null,
+      nativePort,
+      connectNative(name) {
+        assert.equal(name, "ubuntu_parental_control");
+        return nativePort;
+      },
+      onMessage: eventHook(),
       onInstalled: eventHook(),
       onStartup: eventHook(),
     },

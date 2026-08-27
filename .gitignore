@@ -2,6 +2,7 @@ dist/
 build/
 *.xpi
 *.crx
+ubuntu-parental-control-webfilter-*.zip
 ubuntu-parental-control-installer-*.zip
 *.log
 *.sqlite

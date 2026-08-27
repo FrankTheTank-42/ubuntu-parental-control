@@ -19,6 +19,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--chrome-extension-id")
     parser.add_argument("--chrome-update-url", default="https://clients2.google.com/service/update2/crx")
+    parser.add_argument("--restricted-uid", action="append", type=int, default=[])
+    parser.add_argument("--live-public-key-spki", required=True)
     args = parser.parse_args()
 
     with args.template.open("r", encoding="utf-8") as handle:
@@ -45,6 +47,20 @@ def main() -> None:
         config["chrome_extension_id"] = None
         config["chrome_update_url"] = None
     config["managed_browsers"] = browsers
+    restricted_uids = args.restricted_uid
+    if not restricted_uids and args.output.exists():
+        with args.output.open("r", encoding="utf-8") as handle:
+            existing = json.load(handle)
+        existing_uids = existing.get("restricted_users", [])
+        if isinstance(existing_uids, list):
+            restricted_uids = existing_uids
+    if (
+        len(restricted_uids) != len(set(restricted_uids))
+        or any(uid <= 0 or uid > 2**32 - 1 for uid in restricted_uids)
+    ):
+        raise ValueError("Restricted-User-UIDs müssen eindeutig und positiv sein")
+    config["restricted_users"] = sorted(restricted_uids)
+    config["live_public_key_spki"] = args.live_public_key_spki
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(".tmp")

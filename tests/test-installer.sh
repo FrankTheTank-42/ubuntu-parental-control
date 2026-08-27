@@ -10,6 +10,8 @@ python3 "$PROJECT_ROOT/tools/build_extension.py" >/dev/null
 readonly XPI="$PROJECT_ROOT/dist/ubuntu-parental-control-webfilter-firefox-unsigned.xpi"
 readonly POLICY="$TEST_ROOT/etc/firefox/policies/policies.json"
 readonly CHROME_ID="abcdefghijklmnopabcdefghijklmnop"
+readonly RESTRICTED_USER="$(id -un)"
+readonly RESTRICTED_UID="$(id -u)"
 readonly CHROME_POLICY="$TEST_ROOT/etc/opt/chrome/policies/managed/ubuntu-parental-control.json"
 
 mkdir -p "$(dirname "$POLICY")"
@@ -25,6 +27,7 @@ cp "$POLICY" "$TEST_ROOT/original-policy.json"
 "$PROJECT_ROOT/installer/install.sh" \
   --root "$TEST_ROOT" \
   --xpi "$XPI" \
+  --restricted-user "$RESTRICTED_USER" \
   --chrome-extension-id "$CHROME_ID" \
   --no-start >/dev/null
 
@@ -61,22 +64,72 @@ PY
 test -f "$TEST_ROOT/etc/firefox/policies/extensions/webfilter.xpi"
 test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/rule_validator.py"
 test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/upcctl.py"
+test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/native_host.py"
+test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/admin_helper.py"
+test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/control_server.py"
+test -x "$TEST_ROOT/usr/lib/ubuntu-parental-control/user_rules.py"
 test -x "$TEST_ROOT/usr/sbin/upcctl"
 test -f "$TEST_ROOT/etc/ubuntu-parental-control/rules.json"
 test -d "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history"
 test "$(stat -c '%a' "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history")" = "700"
+test -f "$TEST_ROOT/var/lib/ubuntu-parental-control/user-domains.json"
+test "$(stat -c '%a' "$TEST_ROOT/var/lib/ubuntu-parental-control/user-domains.json")" = "600"
+test -f "$TEST_ROOT/var/lib/ubuntu-parental-control/live-signing-key.pem"
+test "$(stat -c '%a' "$TEST_ROOT/var/lib/ubuntu-parental-control/live-signing-key.pem")" = "600"
+test -f "$TEST_ROOT/usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json"
+test -f "$TEST_ROOT/etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json"
+test -f "$TEST_ROOT/usr/share/polkit-1/actions/local.ubuntu-parental-control.policy"
+python3 - "$TEST_ROOT/usr/share/polkit-1/actions/local.ubuntu-parental-control.policy" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[1]).getroot()
+action = root.find("./action[@id='local.ubuntu-parental-control.manage']")
+assert action is not None
+assert action.findtext("./defaults/allow_active") == "auth_admin"
+annotations = {item.attrib["key"]: item.text for item in action.findall("./annotate")}
+assert annotations["org.freedesktop.policykit.exec.path"] == "/usr/lib/ubuntu-parental-control/admin_helper.py"
+PY
+python3 - "$TEST_ROOT/etc/ubuntu-parental-control/config.json" "$RESTRICTED_UID" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = json.load(handle)
+assert config["restricted_users"] == [int(sys.argv[2])]
+assert isinstance(config["live_public_key_spki"], str) and len(config["live_public_key_spki"]) > 80
+PY
+python3 - \
+  "$TEST_ROOT/usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json" \
+  "$TEST_ROOT/etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json" \
+  "$CHROME_ID" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    firefox = json.load(handle)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    chrome = json.load(handle)
+assert firefox["name"] == "ubuntu_parental_control"
+assert firefox["allowed_extensions"] == ["webfilter@ubuntu-parental-control.local"]
+assert chrome["allowed_origins"] == [f"chrome-extension://{sys.argv[3]}/"]
+PY
 python3 "$TEST_ROOT/usr/lib/ubuntu-parental-control/rule_validator.py" \
   "$PROJECT_ROOT/config/rules.example.json" >/dev/null
 python3 "$TEST_ROOT/usr/lib/ubuntu-parental-control/upcctl.py" \
   --rules "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" list >/dev/null
 
-python3 - "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" <<'PY'
+python3 - \
+  "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" \
+  "$PROJECT_ROOT/config/rules.example.json" <<'PY'
 import json
 import sys
 from pathlib import Path
 path = Path(sys.argv[1])
 rules = json.loads(path.read_text(encoding="utf-8"))
+example = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
 rules["profile"]["timezone"] = "UTC"
+# Alte Installationen durften identische sichtbare Namen verwenden. Beim
+# Update müssen beide Blocks anhand ihrer technischen IDs erhalten bleiben.
+rules["blocks"] = example["blocks"][:2]
+rules["blocks"][1]["name"] = rules["blocks"][0]["name"]
 path.write_text(json.dumps(rules, indent=2) + "\n", encoding="utf-8")
 PY
 # A reinstall without repeating the Chrome ID preserves the already selected
@@ -89,15 +142,19 @@ python3 - "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" <<'PY'
 import json
 import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
-    assert json.load(handle)["profile"]["timezone"] == "UTC"
+    rules = json.load(handle)
+assert rules["profile"]["timezone"] == "UTC"
+assert rules["blocks"][0]["name"] == rules["blocks"][1]["name"]
+assert rules["blocks"][0]["id"] != rules["blocks"][1]["id"]
 PY
-python3 - "$TEST_ROOT/etc/ubuntu-parental-control/config.json" "$CHROME_ID" <<'PY'
+python3 - "$TEST_ROOT/etc/ubuntu-parental-control/config.json" "$CHROME_ID" "$RESTRICTED_UID" <<'PY'
 import json
 import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     config = json.load(handle)
 assert config["managed_browsers"] == ["firefox", "chrome"]
 assert config["chrome_extension_id"] == sys.argv[2]
+assert config["restricted_users"] == [int(sys.argv[3])]
 PY
 
 "$PROJECT_ROOT/installer/uninstall.sh" --root "$TEST_ROOT" --no-stop --prepare-only >/dev/null
@@ -135,17 +192,52 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     policies = json.load(handle)["policies"]
 assert "webfilter@ubuntu-parental-control.local" in policies["Extensions"]["Uninstall"]
+assert policies["ExtensionSettings"]["webfilter@ubuntu-parental-control.local"] == {
+    "installation_mode": "blocked"
+}
 with open(sys.argv[2], encoding="utf-8") as handle:
     state = json.load(handle)
 assert state["firefox_uninstall_phase"] == "uninstall_pending"
 assert state["uninstall_pending"] is True
 PY
+
+# Die endgültige Policy darf nicht entfernt werden, solange Firefox die
+# Extension noch in einem bekannten Profil registriert hat.
+readonly FIREFOX_TEST_PROFILE="$TEST_ROOT/home/child/snap/firefox/common/.mozilla/firefox/test.default"
+mkdir -p "$FIREFOX_TEST_PROFILE"
+python3 - "$FIREFOX_TEST_PROFILE/extensions.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump({"addons": [{"id": "webfilter@ubuntu-parental-control.local"}]}, handle)
+PY
+if "$PROJECT_ROOT/installer/uninstall.sh" \
+  --root "$TEST_ROOT" --no-stop --finalize >/dev/null 2>&1; then
+  echo "Uninstaller hat trotz vorhandener Profil-Extension finalisiert" >&2
+  exit 1
+fi
+test -f "$TEST_ROOT/var/lib/ubuntu-parental-control/install-state.json"
+test -f "$POLICY"
+python3 - "$FIREFOX_TEST_PROFILE/extensions.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump({"addons": []}, handle)
+PY
 "$PROJECT_ROOT/installer/uninstall.sh" --root "$TEST_ROOT" --no-stop --finalize >/dev/null
 cmp "$POLICY" "$TEST_ROOT/original-policy.json"
 test ! -e "$TEST_ROOT/usr/lib/ubuntu-parental-control/rule_validator.py"
 test ! -e "$TEST_ROOT/usr/lib/ubuntu-parental-control/upcctl.py"
+test ! -e "$TEST_ROOT/usr/lib/ubuntu-parental-control/native_host.py"
+test ! -e "$TEST_ROOT/usr/lib/ubuntu-parental-control/admin_helper.py"
 test ! -e "$TEST_ROOT/usr/sbin/upcctl"
 test ! -e "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history"
+test ! -e "$TEST_ROOT/var/lib/ubuntu-parental-control/user-domains.json"
+test ! -e "$TEST_ROOT/var/lib/ubuntu-parental-control/user-domains.json.lock"
+test ! -e "$TEST_ROOT/var/lib/ubuntu-parental-control/live-signing-key.pem"
+test ! -e "$TEST_ROOT/usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json"
+test ! -e "$TEST_ROOT/etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json"
+test ! -e "$TEST_ROOT/usr/share/polkit-1/actions/local.ubuntu-parental-control.policy"
 test ! -e "$CHROME_POLICY"
 
 readonly EMPTY_ROOT="$TEST_ROOT/without-original-policy"

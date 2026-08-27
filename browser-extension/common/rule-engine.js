@@ -27,6 +27,64 @@ globalThis.UPC_RULE_ENGINE = (() => {
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 
+  function decodeBase64(text, label) {
+    assert(typeof text === "string" && /^[A-Za-z0-9+/]+={0,2}$/.test(text), `${label} ist kein Base64`);
+    let binary;
+    try {
+      binary = atob(text);
+    } catch (error) {
+      throw new Error(`${label} ist kein Base64: ${error.message}`);
+    }
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  }
+
+  async function validateLivePublicKey(publicKeySpki) {
+    const keyBytes = decodeBase64(publicKeySpki, "Live-Public-Key");
+    assert(keyBytes.length >= 64 && keyBytes.length <= 256, "Live-Public-Key hat eine ungültige Länge");
+    await crypto.subtle.importKey(
+      "spki",
+      keyBytes,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    return publicKeySpki;
+  }
+
+  async function verifyLiveSnapshot(managed, trustedPublicKeySpki) {
+    assert(typeof trustedPublicKeySpki === "string", "Vertrauensanker für Live-Snapshot fehlt");
+    await verifySignedText(
+      managed?.snapshot_json,
+      managed?.live_signature,
+      trustedPublicKeySpki,
+      "Live-Signatur",
+    );
+    if (managed.live_public_key_spki !== undefined) {
+      assert(managed.live_public_key_spki === trustedPublicKeySpki, "Live-Snapshot verwendet einen fremden Schlüssel");
+    }
+  }
+
+  async function verifySignedText(text, signatureBase64, trustedPublicKeySpki, label = "Signatur") {
+    assert(typeof trustedPublicKeySpki === "string", "Vertrauensanker für Signatur fehlt");
+    assert(typeof text === "string", "Signierter Inhalt fehlt");
+    const signature = decodeBase64(signatureBase64, label);
+    assert(signature.length === 64, "Live-Signatur hat eine ungültige Länge");
+    const key = await crypto.subtle.importKey(
+      "spki",
+      decodeBase64(trustedPublicKeySpki, "Live-Public-Key"),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    const valid = await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      signature,
+      new TextEncoder().encode(text),
+    );
+    assert(valid, `${label} stimmt nicht`);
+  }
+
   async function parseManagedSnapshot(managed) {
     assert(managed && managed.protocol_version === 1, "Managed-Policy-Protokoll fehlt oder ist unbekannt");
     assert(typeof managed.snapshot_json === "string", "Managed-Regelsnapshot fehlt");
@@ -192,5 +250,15 @@ globalThis.UPC_RULE_ENGINE = (() => {
     return { rules: output, defaultAction: rules.profile.default_action };
   }
 
-  return { blockIsActive, compile, parseManagedSnapshot, patternToRegex, stableStringify, windowIsActive };
+  return {
+    blockIsActive,
+    compile,
+    parseManagedSnapshot,
+    patternToRegex,
+    stableStringify,
+    validateLivePublicKey,
+    verifyLiveSnapshot,
+    verifySignedText,
+    windowIsActive,
+  };
 })();

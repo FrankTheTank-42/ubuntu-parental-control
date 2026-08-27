@@ -25,13 +25,14 @@ from upcctl import (  # noqa: E402
     command_clear_schedule,
     command_delete_block,
     command_history,
-    command_remove_window,
+    command_list_user_domains,
     command_remove_domain,
+    command_remove_user_domain,
+    command_remove_window,
     command_rollback,
     command_set_block,
     command_set_profile,
     command_set_schedule_timezone,
-    command_set_user_add_domains,
     command_update_string_matcher,
     command_update_url_regex,
     history_dir_for,
@@ -256,6 +257,7 @@ class UpcctlTest(unittest.TestCase):
             self.assertEqual("homework-sites", created["id"])
             self.assertEqual("allow", created["action"])
             self.assertEqual(50, created["priority"])
+            self.assertFalse(created["user_permissions"]["add_domains"])
             self.assertEqual(
                 ["library.example", "school.example"],
                 created["targets"]["domains"],
@@ -273,6 +275,7 @@ class UpcctlTest(unittest.TestCase):
             self.assertEqual("block", changed["action"])
             self.assertEqual(25, changed["priority"])
             self.assertFalse(changed["enabled"])
+            self.assertTrue(changed["user_permissions"]["add_domains"])
 
     def test_invalid_block_changes_leave_rules_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -289,11 +292,29 @@ class UpcctlTest(unittest.TestCase):
                     ["example.com"],
                 )
             with self.assertRaises(CommandError):
+                command_create_block(
+                    target,
+                    "another-social-block",
+                    f"  {self.example['blocks'][0]['name'].upper()}  ",
+                    "block",
+                    0,
+                    ["example.com"],
+                )
+            with self.assertRaises(CommandError):
+                command_set_block(
+                    target,
+                    "self-blocked-sites",
+                    name=self.example["blocks"][0]["name"],
+                    action=None,
+                    priority=None,
+                    enabled=None,
+                )
+            with self.assertRaises(CommandError):
                 command_set_block(
                     target,
                     "self-blocked-sites",
                     name=None,
-                    action="allow",
+                    action="deny",
                     priority=None,
                     enabled=None,
                 )
@@ -393,19 +414,6 @@ class UpcctlTest(unittest.TestCase):
                 load_rules(target)["blocks"][1]["exceptions"]["domains"],
             )
 
-    def test_user_add_domains_is_only_valid_for_block_action(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / "rules.json"
-            self.write(target, self.example)
-            command_set_user_add_domains(target, "self-blocked-sites", False)
-            self.assertFalse(
-                load_rules(target)["blocks"][1]["user_permissions"]["add_domains"]
-            )
-            original = target.read_bytes()
-            with self.assertRaises(CommandError):
-                command_set_user_add_domains(target, "allow-school-youtube", True)
-            self.assertEqual(original, target.read_bytes())
-
     def test_schedule_windows_and_timezone_can_be_managed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "rules.json"
@@ -456,6 +464,40 @@ class UpcctlTest(unittest.TestCase):
             self.assertEqual(original, target.read_bytes())
             command_clear_schedule(target, "social-school-hours", True)
             self.assertNotIn("schedule", load_rules(target)["blocks"][0])
+
+    def test_parent_can_list_and_remove_user_domain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "user-domains.json"
+            self.write(
+                target,
+                {
+                    "format_version": 1,
+                    "users": {"1001": {"self-blocked-sites": ["example.com"]}},
+                },
+            )
+            target.chmod(0o600)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                command_list_user_domains(target)
+            self.assertIn("UID 1001", output.getvalue())
+            original = target.read_bytes()
+            with self.assertRaises(CommandError):
+                command_remove_user_domain(
+                    target,
+                    1001,
+                    "self-blocked-sites",
+                    "example.com",
+                    False,
+                )
+            self.assertEqual(original, target.read_bytes())
+            command_remove_user_domain(
+                target,
+                1001,
+                "self-blocked-sites",
+                "example.com",
+                True,
+            )
+            self.assertEqual({}, json.loads(target.read_text(encoding="utf-8"))["users"])
 
     def test_symlink_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

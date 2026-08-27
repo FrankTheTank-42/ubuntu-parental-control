@@ -141,7 +141,12 @@ class RuleValidator:
             return
         block_id = block.get("id")
         if not isinstance(block_id, str) or not (1 <= len(block_id) <= 64) or not BLOCK_ID_RE.fullmatch(block_id):
-            self.error(f"{path}.id", "muss eine kebab-case ID mit höchstens 64 Zeichen sein")
+            self.error(
+                f"{path}.id",
+                "muss mit einem Kleinbuchstaben beginnen und darf nur Kleinbuchstaben, "
+                "Ziffern und einzelne Bindestriche enthalten (höchstens 64 Zeichen; "
+                "Beispiel: soziale-medien)",
+            )
         name = block.get("name")
         if not isinstance(name, str) or not (1 <= len(name) <= 120):
             self.error(f"{path}.name", "muss 1 bis 120 Zeichen lang sein")

@@ -1,5 +1,103 @@
 # Versionshinweise
 
+## 0.3.4
+
+### Firefox/AMO
+
+- Führt klar unterscheidbare Eltern- und Kinderansichten in der grafischen
+  Regelverwaltung ein. Im Kinderkonto bleiben geschützte Einstellungen
+  sichtbar, sind aber ausgegraut und technisch deaktiviert.
+- Zeigt beim Anlegen, Bearbeiten, Löschen und Ergänzen von Domains eine
+  Warteanimation, bis der Verwaltungsdienst die Speicherung und den neuen
+  Browser-Snapshot bestätigt hat.
+- Entfernt den Schalter „Kind darf Domains ergänzen“. Registrierte
+  Kinderkonten dürfen nun immer Domains zu Blockierlisten ergänzen, während
+  Erlaubnislisten sowie alle löschenden oder lockernden Änderungen geschützt
+  bleiben.
+- Akzeptiert beim Update bereits vorhandene Blocks mit demselben sichtbaren
+  Namen wieder. Ihre eindeutigen technischen IDs bleiben maßgeblich, sodass
+  keine Regel verloren geht; nur das neue Anlegen oder Umbenennen auf einen
+  bereits verwendeten Namen wird verhindert.
+
+## 0.3.3
+
+### Firefox/AMO
+
+- Verhindert, dass die minütliche Zeitplanauswertung einen neueren
+  Native-Live-Snapshot wieder durch den unter Firefox noch älteren
+  `storage.managed`-Stand ersetzt. Gleichnamige Blocks mit unterschiedlichen
+  technischen IDs bleiben dadurch nach dem Löschen eines Blocks korrekt aktiv.
+- Lehnt identische sichtbare Blocknamen bereits vor der Domainabfrage ab und
+  validiert diese Eindeutigkeit zusätzlich im Root-Helfer. Verschiedene Namen
+  bleiben weiterhin über ihre dauerhaften technischen IDs getrennt.
+- Der Firefox-Uninstaller kombiniert nun die dauerhaft durchgesetzte
+  `ExtensionSettings: blocked`-Entfernung mit `Extensions.Uninstall`. Er stellt
+  die ursprüngliche Policy erst wieder her, wenn die Extension aus allen
+  gefundenen normalen, Snap- und Flatpak-Profilen verschwunden ist.
+
+## 0.3.2
+
+### Firefox/AMO
+
+- Behebt, dass ein administrativ angelegter oder bearbeiteter Block in der
+  laufenden Optionsseite wieder verschwinden konnte und erst nach einem
+  Firefox-Neustart aktiv wurde.
+- Der Native Host wartet nach einer Polkit-Änderung nun auf die bestätigte
+  Veröffentlichung durch den Root-Daemon und liefert den neuen signierten
+  Snapshot direkt in derselben Antwort an Firefox zurück.
+- Die Oberfläche meldet eine Änderung erst dann als erfolgreich, wenn der neue
+  Snapshot auch als dynamischer DNR-Regelsatz im laufenden Browser aktiviert
+  wurde.
+
+## 0.3.1
+
+### Firefox/AMO
+
+- Behebt irreführende Native-Host-Zeitüberschreitungen während einer laufenden
+  Polkit-Passworteingabe. Administrative Anfragen warten nun bis zum Ende des
+  erlaubten Polkit-Zeitfensters.
+- Verhindert parallele oder wiederholte Administrator-Anfragen aus der
+  Optionsseite. Beim Anlegen, Speichern oder Löschen ist dadurch nur noch eine
+  Passwortabfrage pro Änderung vorgesehen.
+- Erzeugt die technische Block-ID beim Anlegen automatisch aus dem
+  verständlichen Blocknamen. Validierungsfehler erklären das erlaubte Format
+  jetzt ohne den ungeklärten Fachbegriff „Kebab Case“.
+- Normale Native-Messaging-Anfragen erhalten eine robustere Zeitgrenze; die
+  Fehlermeldung nennt künftig den betroffenen Befehl. Nach erfolgreicher
+  Wiederverbindung verschwindet eine veraltete Fehlermeldung automatisch.
+
+## 0.3.0
+
+### Firefox/AMO
+
+- Ergänzt eine direkt über die Add-on-Einstellungen erreichbare grafische
+  Regelverwaltung mit Blockübersicht, Zeitplan- und Zielbearbeitung.
+- Verwendet Native Messaging als optionalen lokalen Livekanal. Neue validierte
+  Regeln werden dadurch sofort in Firefox aktiviert, ohne auf ein erneutes
+  Einlesen der Enterprise Policy oder einen Browserneustart zu warten.
+- `storage.managed` bleibt die verbindliche Start- und Rückfallebene. Bei nicht
+  verfügbarem Native Host bleibt der Filter aktiv und der Editor arbeitet im
+  Nur-Lesen-Modus.
+- Live-Snapshots und der UID-basierte Kontostatus werden mit einem
+  rootgeschützten ECDSA-P-256-Schlüssel signiert. Die Erweiterung lehnt
+  gefälschte Native-Nachrichten und einen nicht bestätigten Elternmodus ab.
+- Die neue Berechtigung `nativeMessaging` dient ausschließlich dem lokalen
+  Austausch mit dem rootinstallierten Ubuntu-Parental-Control-Host. Es werden
+  keine Daten an externe Server übertragen.
+
+### Sichere Regelverwaltung
+
+- Eingeschränkte Ubuntu-Konten können ausschließlich Domains zu ausdrücklich
+  freigegebenen Blocklisten hinzufügen. Entfernen, Ausnahmen und jede Lockerung
+  sind für diese Konten technisch nicht als Dienstoperation verfügbar.
+- Kinderergänzungen werden pro Linux-UID getrennt und rootgeschützt gespeichert
+  und erst nach erneuter Gesamtvalidierung in den Browser-Snapshot übernommen.
+- Administrative Änderungen aus der Extension benötigen bei jedem Speichern
+  eine Polkit-Administratoranmeldung und verwenden weiterhin atomare Writes,
+  Validierung und Versionshistorie.
+- Firefox und Chrome verwenden dieselbe Optionsseite, denselben Native Host und
+  denselben SHA-256-identifizierten Regelsnapshot.
+
 ## 0.2.2
 
 ### Firefox/AMO

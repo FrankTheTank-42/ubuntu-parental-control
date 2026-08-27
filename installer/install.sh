@@ -9,9 +9,10 @@ xpi_path=""
 chrome_extension_id=""
 chrome_update_url="https://clients2.google.com/service/update2/crx"
 start_service=true
+restricted_uids=()
 
 usage() {
-  echo "Verwendung: sudo $0 --xpi PFAD [--chrome-extension-id ID] [--chrome-update-url URL] [--root TESTZIEL] [--no-start]"
+  echo "Verwendung: sudo $0 --xpi PFAD [--restricted-user BENUTZER] [--chrome-extension-id ID] [--chrome-update-url URL] [--root TESTZIEL] [--no-start]"
 }
 
 die() {
@@ -43,6 +44,13 @@ while (($#)); do
       chrome_update_url="$2"
       shift 2
       ;;
+    --restricted-user)
+      (($# >= 2)) || die "--restricted-user benötigt einen Kontonamen"
+      restricted_uid="$(id -u -- "$2" 2>/dev/null)" || die "Ubuntu-Benutzerkonto nicht gefunden: $2"
+      [[ "$restricted_uid" =~ ^[0-9]+$ && "$restricted_uid" -gt 0 ]] || die "ungültige UID für eingeschränktes Konto: $2"
+      restricted_uids+=("$restricted_uid")
+      shift 2
+      ;;
     --no-start)
       start_service=false
       shift
@@ -60,6 +68,9 @@ done
 [[ -n "$xpi_path" ]] || die "--xpi ist erforderlich (Firefox Stable benötigt ein signiertes XPI)"
 [[ -f "$xpi_path" ]] || die "XPI nicht gefunden: $xpi_path"
 command -v python3 >/dev/null || die "python3 fehlt"
+command -v pkexec >/dev/null || die "pkexec (polkit) fehlt"
+command -v openssl >/dev/null || die "openssl fehlt"
+command -v base64 >/dev/null || die "base64 fehlt"
 if [[ -n "$chrome_extension_id" && ! "$chrome_extension_id" =~ ^[a-p]{32}$ ]]; then
   die "Chrome-Extension-ID muss aus 32 Zeichen a-p bestehen"
 fi
@@ -91,17 +102,19 @@ try:
     version_tuple = tuple(int(part) for part in version.split("."))
 except (AttributeError, ValueError):
     raise SystemExit(f"Fehler: ungültige XPI-Version {version!r}")
-if version_tuple < (0, 2, 1):
-    raise SystemExit("Fehler: XPI ist älter als 0.2.1 und enthält den Firefox-Startfix noch nicht")
-required = {"storage", "alarms", "declarativeNetRequest"}
+if version_tuple < (0, 3, 0):
+    raise SystemExit("Fehler: XPI ist älter als 0.3.0 und enthält die sichere Regelverwaltung noch nicht")
+required = {"storage", "alarms", "declarativeNetRequest", "nativeMessaging"}
 if not required.issubset(set(manifest.get("permissions", []))):
     raise SystemExit("Fehler: XPI enthält nicht alle benötigten Webfilter-Berechtigungen")
-if version_tuple >= (0, 2, 2):
-    required_hosts = {"http://*/*", "https://*/*"}
-    if not required_hosts.issubset(set(manifest.get("host_permissions", []))):
-        raise SystemExit("Fehler: XPI enthält nicht alle für die Blockseite benötigten Host-Berechtigungen")
-    if not {"blocked/blocked.html", "blocked/blocked.css"}.issubset(archive_names):
-        raise SystemExit("Fehler: XPI enthält die Blockseite nicht vollständig")
+required_hosts = {"http://*/*", "https://*/*"}
+if not required_hosts.issubset(set(manifest.get("host_permissions", []))):
+    raise SystemExit("Fehler: XPI enthält nicht alle für die Blockseite benötigten Host-Berechtigungen")
+if not {"blocked/blocked.html", "blocked/blocked.css"}.issubset(archive_names):
+    raise SystemExit("Fehler: XPI enthält die Blockseite nicht vollständig")
+options_page = manifest.get("options_ui", {}).get("page")
+if options_page != "options/options.html" or options_page not in archive_names:
+    raise SystemExit("Fehler: XPI enthält die Regelverwaltungsseite nicht")
 PY
 
 prefix_path() {
@@ -117,8 +130,12 @@ readonly POLICY_FILE="$(prefix_path /etc/firefox/policies/policies.json)"
 readonly EXTENSION_DIR="$(prefix_path /etc/firefox/policies/extensions)"
 readonly LIB_DIR="$(prefix_path /usr/lib/ubuntu-parental-control)"
 readonly UPCCTL="$(prefix_path /usr/sbin/upcctl)"
+readonly FIREFOX_NATIVE_MANIFEST="$(prefix_path /usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json)"
+readonly CHROME_NATIVE_MANIFEST="$(prefix_path /etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json)"
+readonly POLKIT_POLICY="$(prefix_path /usr/share/polkit-1/actions/local.ubuntu-parental-control.policy)"
 readonly STATE_DIR="$(prefix_path /var/lib/ubuntu-parental-control)"
 readonly RULE_HISTORY_DIR="$STATE_DIR/rule-history"
+readonly LIVE_SIGNING_KEY="$STATE_DIR/live-signing-key.pem"
 readonly SYSTEMD_DIR="$(prefix_path /etc/systemd/system)"
 readonly STATE_FILE="$STATE_DIR/install-state.json"
 readonly BACKUP_FILE="$STATE_DIR/policies.json.before-install"
@@ -129,6 +146,17 @@ readonly LEGACY_XPI="$(prefix_path /usr/local/share/ubuntu-parental-control/webf
 install -d -m 0755 "$ETC_DIR" "$(dirname "$POLICY_FILE")" "$EXTENSION_DIR" "$LIB_DIR" "$SYSTEMD_DIR"
 install -d -m 0700 "$STATE_DIR"
 install -d -m 0700 "$RULE_HISTORY_DIR"
+
+[[ ! -L "$LIVE_SIGNING_KEY" ]] || die "Live-Signaturschlüssel darf kein symbolischer Link sein"
+if [[ ! -f "$LIVE_SIGNING_KEY" ]]; then
+  openssl genpkey \
+    -algorithm EC \
+    -pkeyopt ec_paramgen_curve:P-256 \
+    -out "$LIVE_SIGNING_KEY" >/dev/null 2>&1
+fi
+chmod 0600 "$LIVE_SIGNING_KEY"
+live_public_key_spki="$(openssl pkey -in "$LIVE_SIGNING_KEY" -pubout -outform DER 2>/dev/null | base64 -w0)"
+[[ -n "$live_public_key_spki" ]] || die "öffentlicher Live-Signaturschlüssel konnte nicht erzeugt werden"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   if [[ -f "$POLICY_FILE" ]]; then
@@ -152,21 +180,50 @@ config_arguments=(
   --template "$PROJECT_ROOT/config/config.json"
   --output "$ETC_DIR/config.json"
   --chrome-update-url "$chrome_update_url"
+  --live-public-key-spki "$live_public_key_spki"
 )
 if [[ -n "$chrome_extension_id" ]]; then
   config_arguments+=(--chrome-extension-id "$chrome_extension_id")
 fi
+for restricted_uid in "${restricted_uids[@]}"; do
+  config_arguments+=(--restricted-uid "$restricted_uid")
+done
 python3 "$PROJECT_ROOT/installer/write_runtime_config.py" "${config_arguments[@]}"
 if [[ ! -f "$ETC_DIR/rules.json" ]]; then
   install -m 0644 "$PROJECT_ROOT/config/rules.json" "$ETC_DIR/rules.json"
 fi
+if [[ ! -f "$STATE_DIR/user-domains.json" ]]; then
+  printf '{"format_version":1,"users":{}}\n' > "$STATE_DIR/user-domains.json"
+  chmod 0600 "$STATE_DIR/user-domains.json"
+fi
 install -m 0755 "$PROJECT_ROOT/daemon/daemon.py" "$LIB_DIR/daemon.py"
 install -m 0755 "$PROJECT_ROOT/daemon/rule_validator.py" "$LIB_DIR/rule_validator.py"
 install -m 0755 "$PROJECT_ROOT/daemon/managed_policy.py" "$LIB_DIR/managed_policy.py"
+install -m 0755 "$PROJECT_ROOT/daemon/user_rules.py" "$LIB_DIR/user_rules.py"
+install -m 0755 "$PROJECT_ROOT/daemon/control_server.py" "$LIB_DIR/control_server.py"
+install -m 0755 "$PROJECT_ROOT/daemon/native_host.py" "$LIB_DIR/native_host.py"
+install -m 0755 "$PROJECT_ROOT/daemon/admin_helper.py" "$LIB_DIR/admin_helper.py"
 install -m 0755 "$PROJECT_ROOT/daemon/upcctl.py" "$LIB_DIR/upcctl.py"
 install -D -m 0755 "$PROJECT_ROOT/installer/upcctl" "$UPCCTL"
 install -m 0644 "$PROJECT_ROOT/daemon/ubuntu-parental-control.service" "$SYSTEMD_DIR/ubuntu-parental-control.service"
+install -D -m 0644 "$PROJECT_ROOT/installer/local.ubuntu-parental-control.policy" "$POLKIT_POLICY"
 install -m 0644 "$xpi_path" "$EXTENSION_DIR/webfilter.xpi"
+
+if [[ "$root_prefix" == "/" ]]; then
+  native_host_path="/usr/lib/ubuntu-parental-control/native_host.py"
+else
+  native_host_path="$LIB_DIR/native_host.py"
+fi
+native_manifest_arguments=(
+  --host-path "$native_host_path"
+  --config "$ETC_DIR/config.json"
+  --firefox-output "$FIREFOX_NATIVE_MANIFEST"
+  --chrome-output "$CHROME_NATIVE_MANIFEST"
+)
+if [[ -n "$chrome_extension_id" ]]; then
+  native_manifest_arguments+=(--chrome-extension-id "$chrome_extension_id")
+fi
+python3 "$PROJECT_ROOT/installer/write_native_manifests.py" "${native_manifest_arguments[@]}"
 
 if [[ "$root_prefix" == "/" ]]; then
   install_url="file:///etc/firefox/policies/extensions/webfilter.xpi"
@@ -193,6 +250,7 @@ python3 "$LIB_DIR/daemon.py" \
 python3 "$LIB_DIR/managed_policy.py" \
   --config "$ETC_DIR/config.json" \
   --rules "$ETC_DIR/rules.json" \
+  --user-domains "$STATE_DIR/user-domains.json" \
   --firefox-policy "$POLICY_FILE" \
   --chrome-policy "$CHROME_POLICY"
 

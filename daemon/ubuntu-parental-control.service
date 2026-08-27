@@ -4,7 +4,7 @@ After=local-fs.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /usr/lib/ubuntu-parental-control/daemon.py --config /etc/ubuntu-parental-control/config.json --rules /etc/ubuntu-parental-control/rules.json --last-good /var/lib/ubuntu-parental-control/rules.last-known-good.json --firefox-policy /etc/firefox/policies/policies.json --chrome-policy /etc/opt/chrome/policies/managed/ubuntu-parental-control.json
+ExecStart=/usr/bin/python3 /usr/lib/ubuntu-parental-control/daemon.py --config /etc/ubuntu-parental-control/config.json --rules /etc/ubuntu-parental-control/rules.json --last-good /var/lib/ubuntu-parental-control/rules.last-known-good.json --user-domains /var/lib/ubuntu-parental-control/user-domains.json --live-snapshot /run/ubuntu-parental-control/live-snapshot.json --live-signing-key /var/lib/ubuntu-parental-control/live-signing-key.pem --control-socket /run/ubuntu-parental-control/control.sock --firefox-policy /etc/firefox/policies/policies.json --chrome-policy /etc/opt/chrome/policies/managed/ubuntu-parental-control.json
 Restart=on-failure
 RestartSec=2s
 User=root
@@ -18,6 +18,8 @@ CapabilityBoundingSet=
 LockPersonality=true
 MemoryDenyWriteExecute=true
 RestrictAddressFamilies=AF_UNIX
+RuntimeDirectory=ubuntu-parental-control
+RuntimeDirectoryMode=0755
 SystemCallArchitectures=native
 
 [Install]

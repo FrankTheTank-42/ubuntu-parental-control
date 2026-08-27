@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Ubuntu Parental Control</vendor>
+  <vendor_url>https://github.com/FrankTheTank-42/ubuntu-parental-control</vendor_url>
+  <action id="local.ubuntu-parental-control.manage">
+    <description>Ubuntu Parental Control rules verwalten</description>
+    <message>Zur Änderung der Webfilter-Regeln ist eine Administrator-Anmeldung erforderlich.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/ubuntu-parental-control/admin_helper.py</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

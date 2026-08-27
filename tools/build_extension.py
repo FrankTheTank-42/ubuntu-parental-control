@@ -53,6 +53,13 @@ def main() -> None:
         accessible = manifest.get("web_accessible_resources", [])
         if not any("blocked/blocked.html" in entry.get("resources", []) for entry in accessible):
             raise SystemExit(f"{browser}-Manifest veröffentlicht die Blockseite nicht")
+        if "nativeMessaging" not in manifest.get("permissions", []):
+            raise SystemExit(f"{browser}-Manifest enthält nativeMessaging nicht")
+        if manifest.get("options_ui", {}).get("page") != "options/options.html":
+            raise SystemExit(f"{browser}-Manifest bindet die Optionsseite nicht ein")
+    for required in (SOURCE / "options" / "options.html", SOURCE / "options" / "options.js"):
+        if not required.is_file():
+            raise SystemExit(f"Optionsseiten-Datei fehlt: {required}")
     build_archive(FIREFOX_OUTPUT, firefox_manifest)
     build_archive(CHROME_OUTPUT, chrome_manifest)
     print(f"Extension-Version {firefox['version']}")

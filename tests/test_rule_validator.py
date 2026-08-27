@@ -31,6 +31,11 @@ class RuleValidatorTest(unittest.TestCase):
         value["blocks"][1]["id"] = value["blocks"][0]["id"]
         self.assertTrue(any("Block-ID bereits" in error for error in self.errors(value)))
 
+    def test_legacy_duplicate_visible_block_names_are_accepted(self) -> None:
+        value = copy.deepcopy(self.example)
+        value["blocks"][1]["name"] = f"  {value['blocks'][0]['name'].upper()}  "
+        self.assertEqual([], self.errors(value))
+
     def test_user_may_only_add_domains_to_block_rule(self) -> None:
         value = copy.deepcopy(self.example)
         value["blocks"][2]["user_permissions"]["add_domains"] = True

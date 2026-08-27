@@ -4,6 +4,8 @@
   "managed_browsers": [
     "firefox"
   ],
+  "restricted_users": [],
+  "live_public_key_spki": null,
   "chrome_extension_id": null,
   "chrome_update_url": null
 }

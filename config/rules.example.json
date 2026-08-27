@@ -14,7 +14,7 @@
       "priority": 0,
       "action": "block",
       "user_permissions": {
-        "add_domains": false,
+        "add_domains": true,
         "remove_domains": false,
         "add_url_patterns": false,
         "add_url_regex": false,

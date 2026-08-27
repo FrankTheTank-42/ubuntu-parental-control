@@ -13,15 +13,18 @@ import re
 import secrets
 import stat
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from rule_validator import DuplicateKeyError, RuleValidator, ValidationIssue, load_rules
+from user_rules import UserDomainStore, UserRuleError
 
 
 SYSTEM_RULES = Path("/etc/ubuntu-parental-control/rules.json")
 SYSTEM_HISTORY = Path("/var/lib/ubuntu-parental-control/rule-history")
+SYSTEM_USER_DOMAINS = Path("/var/lib/ubuntu-parental-control/user-domains.json")
 VERSION_RE = re.compile(
     r"^[0-9]{8}T[0-9]{6}\.[0-9]{6}Z-[0-9a-f]{12}-[0-9a-f]{4}$"
 )
@@ -29,6 +32,32 @@ VERSION_RE = re.compile(
 
 class CommandError(RuntimeError):
     pass
+
+
+def normalized_block_name(name: str) -> str:
+    return unicodedata.normalize("NFKC", name).strip().casefold()
+
+
+def reject_duplicate_block_name(
+    rules: dict[str, Any],
+    name: str,
+    *,
+    exclude_id: str | None = None,
+) -> None:
+    normalized = normalized_block_name(name)
+    duplicate = next(
+        (
+            block
+            for block in rules["blocks"]
+            if block["id"] != exclude_id
+            and normalized_block_name(block["name"]) == normalized
+        ),
+        None,
+    )
+    if duplicate is not None:
+        raise CommandError(
+            f"Blockname wird bereits von ID {duplicate['id']!r} verwendet: {duplicate['name']}"
+        )
 
 
 def format_issues(issues: list[ValidationIssue]) -> str:
@@ -236,8 +265,9 @@ def validate_domain(domain: str) -> None:
 def print_activation_hint(path: Path) -> None:
     if path.resolve(strict=False) == SYSTEM_RULES:
         print(
-            "Hinweis: Firefox muss die neue Policy durch einen vollständigen "
-            "Browserneustart laden; Chrome aktualisiert sie dynamisch."
+            "Hinweis: Der Native Host überträgt die Änderung an laufende Browser. "
+            "Zeigt die Extension den Nur-Lesen-Modus, benötigt Firefox für den "
+            "Managed-Storage-Fallback einen vollständigen Browserneustart."
         )
 
 
@@ -352,6 +382,42 @@ def command_set_profile(
     print_activation_hint(path)
 
 
+def command_list_user_domains(path: Path) -> None:
+    try:
+        state = UserDomainStore(path).load()
+    except UserRuleError as exc:
+        raise CommandError(str(exc)) from exc
+    entries = 0
+    for uid, blocks in sorted(state["users"].items(), key=lambda item: int(item[0])):
+        for block_id, domains in sorted(blocks.items()):
+            for domain in domains:
+                print(f"UID {uid}  {block_id}  {domain}")
+                entries += 1
+    if entries == 0:
+        print("Keine Domain-Ergänzungen eingeschränkter Benutzer vorhanden.")
+
+
+def command_remove_user_domain(
+    path: Path,
+    uid: int,
+    block_id: str,
+    domain: str,
+    confirmed: bool,
+) -> None:
+    if not confirmed:
+        raise CommandError("Entfernen einer Benutzer-Domain muss mit --yes bestätigt werden")
+    if path.resolve(strict=False) == SYSTEM_USER_DOMAINS and os.geteuid() != 0:
+        raise CommandError("Benutzer-Domains dürfen nur als root entfernt werden")
+    store = UserDomainStore(path)
+    try:
+        store.remove(uid, block_id, domain)
+    except UserRuleError as exc:
+        raise CommandError(str(exc)) from exc
+    print(f"Benutzer-Domain entfernt: UID {uid}, Block {block_id!r}, {domain}")
+    if path.resolve(strict=False) == SYSTEM_USER_DOMAINS:
+        print("Hinweis: Der Dienst veröffentlicht die Änderung automatisch.")
+
+
 def command_add_domain(path: Path, block_id: str, domain: str) -> None:
     validate_domain(domain)
     rules = copy.deepcopy(load_valid_rules(path))
@@ -392,6 +458,7 @@ def command_create_block(
     rules = copy.deepcopy(load_valid_rules(path))
     if any(block["id"] == block_id for block in rules["blocks"]):
         raise CommandError(f"Block-ID wird bereits verwendet: {block_id}")
+    reject_duplicate_block_name(rules, name)
     rules["blocks"].append(
         {
             "id": block_id,
@@ -400,7 +467,7 @@ def command_create_block(
             "priority": priority,
             "action": action,
             "user_permissions": {
-                "add_domains": False,
+                "add_domains": action == "block",
                 "remove_domains": False,
                 "add_url_patterns": False,
                 "add_url_regex": False,
@@ -440,9 +507,11 @@ def command_set_block(
     rules = copy.deepcopy(load_valid_rules(path))
     block = find_block(rules, block_id)
     if name is not None:
+        reject_duplicate_block_name(rules, name, exclude_id=block_id)
         block["name"] = name
     if action is not None:
         block["action"] = action
+        block["user_permissions"]["add_domains"] = action == "block"
     if priority is not None:
         block["priority"] = priority
     if enabled is not None:
@@ -519,16 +588,6 @@ def command_update_url_regex(
         verb = "entfernt"
     write_rules_atomic(path, rules)
     print(f"URL-Regex in Block {block_id!r} {verb}: {pattern}")
-    print_activation_hint(path)
-
-
-def command_set_user_add_domains(path: Path, block_id: str, enabled: bool) -> None:
-    rules = copy.deepcopy(load_valid_rules(path))
-    block = find_block(rules, block_id)
-    block["user_permissions"]["add_domains"] = enabled
-    write_rules_atomic(path, rules)
-    state = "aktiviert" if enabled else "deaktiviert"
-    print(f"Benutzerrecht add_domains für Block {block_id!r} {state}.")
     print_activation_hint(path)
 
 
@@ -633,6 +692,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=SYSTEM_RULES,
         help=f"aktive Regeldatei (Standard: {SYSTEM_RULES})",
     )
+    parser.add_argument(
+        "--user-domains",
+        type=Path,
+        default=SYSTEM_USER_DOMAINS,
+        help=f"append-only Benutzerregeln (Standard: {SYSTEM_USER_DOMAINS})",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     validate = subparsers.add_parser("validate", help="Regeldatei vollständig prüfen")
@@ -666,6 +731,19 @@ def build_parser() -> argparse.ArgumentParser:
     profile = subparsers.add_parser("set-profile", help="Profileinstellungen ändern")
     profile.add_argument("--timezone")
     profile.add_argument("--default-action", choices=("allow", "block"))
+
+    subparsers.add_parser(
+        "list-user-domains",
+        help="append-only Domain-Ergänzungen mit UID anzeigen",
+    )
+    remove_user_domain = subparsers.add_parser(
+        "remove-user-domain",
+        help="Domain-Ergänzung als Administrator entfernen",
+    )
+    remove_user_domain.add_argument("uid", type=int)
+    remove_user_domain.add_argument("block_id")
+    remove_user_domain.add_argument("domain")
+    remove_user_domain.add_argument("--yes", action="store_true")
 
     add_domain = subparsers.add_parser("add-domain", help="Domain zu einem Block hinzufügen")
     add_domain.add_argument("block_id")
@@ -727,13 +805,6 @@ def build_parser() -> argparse.ArgumentParser:
         exception.add_argument("block_id")
         exception.add_argument("domain")
 
-    user_domains = subparsers.add_parser(
-        "set-user-add-domains",
-        help="append-only Domain-Ergänzungen für einen Block erlauben oder sperren",
-    )
-    user_domains.add_argument("block_id")
-    user_domains.add_argument("state", choices=("enabled", "disabled"))
-
     add_window = subparsers.add_parser("add-window", help="wöchentliches Zeitfenster hinzufügen")
     add_window.add_argument("block_id")
     add_window.add_argument("--timezone", required=True)
@@ -789,6 +860,16 @@ def main() -> int:
                 timezone=args.timezone,
                 default_action=args.default_action,
             )
+        elif args.command == "list-user-domains":
+            command_list_user_domains(args.user_domains)
+        elif args.command == "remove-user-domain":
+            command_remove_user_domain(
+                args.user_domains,
+                args.uid,
+                args.block_id,
+                args.domain,
+                args.yes,
+            )
         elif args.command == "add-domain":
             command_add_domain(args.rules, args.block_id, args.domain)
         elif args.command == "remove-domain":
@@ -838,12 +919,6 @@ def main() -> int:
                 "domains",
                 args.domain,
                 add=args.command == "add-exception-domain",
-            )
-        elif args.command == "set-user-add-domains":
-            command_set_user_add_domains(
-                args.rules,
-                args.block_id,
-                args.state == "enabled",
             )
         elif args.command == "add-window":
             command_add_window(

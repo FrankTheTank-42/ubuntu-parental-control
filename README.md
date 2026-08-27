@@ -12,6 +12,8 @@ Dieser Stand installiert:
   `/etc/firefox/policies/extensions/`,
 - eine geschützte Systemkonfiguration unter `/etc/ubuntu-parental-control`,
 - einen minimalen, gehärteten `systemd`-Dienst,
+- eine gemeinsame Firefox-/Chrome-Optionsseite mit Native-Livekanal,
+- append-only Domain-Ergänzungen für registrierte Kinderkonten,
 - sowie einen Uninstaller, der eine zuvor vorhandene Firefox-Policy wiederherstellt.
 
 ### Erweiterungen bauen und signieren
@@ -42,6 +44,19 @@ Nur Firefox installieren:
 sudo ./installer/install.sh --xpi /pfad/zur/signierten-datei.xpi
 ```
 
+Ein Kinderkonto registrieren, das ausschließlich Blockierlisten append-only
+erweitern darf:
+
+```bash
+sudo ./installer/install.sh \
+  --xpi /pfad/zur/signierten-datei.xpi \
+  --restricted-user KINDERKONTO
+```
+
+`--restricted-user` kann für mehrere Konten wiederholt werden. Bei einer
+erneuten Installation ohne diese Option bleibt die bestehende Kontoliste
+erhalten.
+
 Firefox und Google Chrome installieren:
 
 ```bash
@@ -63,6 +78,38 @@ Chrome zeigt die geladene Richtlinie unter `chrome://policy`. Die Extension ist
 Benutzer nicht entfernt werden. Zusätzlich deaktiviert die Projekt-Policy den
 Gast- und Inkognitomodus und sperrt Chrome DevTools, damit diese Wege den
 verwalteten Filter nicht umgehen beziehungsweise verändern können.
+
+### Grafische Regelverwaltung
+
+Die Einstellungen der Extension öffnen eine gemeinsame, LeechBlock-ähnliche
+Regelübersicht. Die Elternansicht bietet den vollständigen Editor. In der
+Kinderansicht bleiben die geschützten Einstellungen sichtbar, sind aber klar
+ausgegraut und technisch deaktiviert. Das Kind kann jede Blockierliste um eine
+Domain ergänzen, aber weder eigene noch vorgegebene Domains entfernen und keine
+Regel lockern.
+
+In einem nicht als eingeschränkt registrierten Konto lassen sich Blocks
+anlegen, bearbeiten und löschen. Jede Speicherung öffnet eine neue
+Polkit-Administratoranmeldung; es wird bewusst keine Autorisierung für spätere
+Änderungen zwischengespeichert. Die Oberfläche kann Name, Aktivierung, Aktion,
+Priorität, Domainziele, URL-Patterns, URL-Regex, Domain-Ausnahmen und Zeitplan
+bearbeiten. Während einer Speicherung zeigt die Oberfläche eine Warteanzeige,
+bis der Verwaltungsdienst den neuen Browser-Snapshot bestätigt hat.
+
+Native Messaging transportiert nur lokale Regelsnapshots und
+Verwaltungsanfragen. Die verbindliche Start- und Rückfallebene bleibt
+`storage.managed`. Ist der Native Host nicht erreichbar, bleibt der Filter
+aktiv und die Oberfläche wechselt in den Nur-Lesen-Modus. Live-Snapshots und
+Kontoberechtigungen sind mit einem bei der Installation erzeugten,
+rootgeschützten ECDSA-Schlüssel signiert. Die Extension übernimmt den
+öffentlichen Vertrauensanker ausschließlich aus `storage.managed`; ein vom
+Kinderkonto überschriebener Native Host kann daher weder Regeln einschleusen
+noch den Elternmodus freischalten.
+
+Administrative Bearbeitung ist für ein separates, nicht eingeschränktes
+Ubuntu-Elternkonto vorgesehen. Im Kinderkonto sollte auch eine betreuende
+Person keine Polkit-Anmeldung für eine unerwartet angebotene Verwaltung
+bestätigen.
 
 ### Status prüfen
 
@@ -124,18 +171,20 @@ Mitternacht. Für Regex mit Groß-/Kleinschreibung steht bei Hinzufügen und
 Entfernen `--case-sensitive` zur Verfügung. Der vollständige Zustand eines
 Blocks ist mit `upcctl show-block BLOCK-ID` sichtbar.
 
-Administratoren können außerdem das für eine spätere Benutzeroberfläche
-vorgesehene append-only Recht konfigurieren:
+Ein Konto muss bei der Installation mit `--restricted-user` registriert sein,
+um Domains append-only ergänzen zu dürfen. Die Berechtigung gilt automatisch
+für alle Regeln mit `action: block`; `action: allow` bleibt ausgeschlossen.
+Ergänzungen werden getrennt unter
+`/var/lib/ubuntu-parental-control/user-domains.json` gespeichert. Eltern können
+sie in der Extension oder per CLI anzeigen und entfernen:
 
 ```bash
-sudo upcctl set-user-add-domains gaming enabled
-sudo upcctl set-user-add-domains gaming disabled
+sudo upcctl list-user-domains
+sudo upcctl remove-user-domain UID BLOCK-ID DOMAIN --yes
 ```
 
-Dieser Schalter allein gewährt einem normalen Benutzer noch keinen Schreibweg.
-Der dafür notwendige privilegierte append-only Dienst ist eine spätere
-Ausbaustufe. URL-Pattern- und Regex-Ausnahmen werden bewusst nicht angeboten,
-weil sie mit DNR nicht sicher auf genau einen Block begrenzt werden können.
+URL-Pattern- und Regex-Ausnahmen werden bewusst nicht angeboten, weil sie mit
+DNR nicht sicher auf genau einen Block begrenzt werden können.
 
 Änderungen aus einer vollständigen JSON-Datei lassen sich vor dem Übernehmen
 als vereinheitlichtes Diff prüfen:
@@ -169,9 +218,10 @@ sudo upcctl set-profile --timezone UTC --default-action block
 ```
 
 Der Daemon erkennt eine erfolgreiche Änderung automatisch. Ein Neustart des
-Dienstes ist nicht erforderlich. Firefox kann für die erneuerte Enterprise
-Policy weiterhin einen vollständigen Browserneustart benötigen. `upcctl` weist
-nach jeder Änderung der Systemregeldatei ausdrücklich darauf hin.
+Dienstes ist nicht erforderlich. Bei verbundenem Native Host aktualisiert
+Firefox die DNR-Regeln sofort. Ist der Host nicht verfügbar, kann für den
+Managed-Storage-Fallback weiterhin ein vollständiger Browserneustart nötig sein.
+`upcctl` weist nach jeder Änderung der Systemregeldatei darauf hin.
 
 ### Entfernen
 
@@ -181,12 +231,14 @@ sudo ./installer/uninstall.sh
 
 Das Skript führt Firefox durch zwei getrennte Neustarts. Beim ersten Start wird
 die zuvor erzwungene Erweiterung freigegeben. Danach aktiviert das Skript die
-temporäre `Extensions.Uninstall`-Policy; beim zweiten Start entfernt Firefox die
-Erweiterung. Nach jedem vollständig beendeten Firefox-Start wird der Ablauf im
-Terminal mit der Eingabetaste fortgesetzt. Zum Schluss räumt das Skript die
-temporäre Policy auf und stellt die ursprüngliche Policy wieder her. Falls das
-Terminal vorher geschlossen wird, setzt ein erneuter Aufruf von `uninstall.sh`
-die gespeicherte Phase fort.
+temporäre `ExtensionSettings: blocked`- und `Extensions.Uninstall`-Policy; beim
+zweiten Start entfernt Firefox die Erweiterung. Nach jedem vollständig
+beendeten Firefox-Start wird der Ablauf im Terminal mit der Eingabetaste
+fortgesetzt. Vor dem Aufräumen prüft das Skript alle gefundenen normalen,
+Snap- und Flatpak-Firefox-Profile. Solange die Extension noch in einem Profil
+registriert ist, bleibt die Uninstall-Policy aktiv und der Ablauf kann nach
+einem weiteren Firefox-Neustart erneut ausgeführt werden. Erst nach der
+bestätigten Entfernung stellt das Skript die ursprüngliche Policy wieder her.
 
 ### Tests
 
@@ -197,6 +249,7 @@ Die Tests laufen ohne Root-Rechte in einem temporären Installationsziel:
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 node tests/test_rule_engine.js
 node tests/test_background_start.js
+node tests/test_native_live_update.js
 ```
 
 ## Sicherheitsgrenze
@@ -232,17 +285,22 @@ SHA-256-identifizierten Snapshot in beiden Browsern:
   `policies.3rdparty.Extensions.webfilter@ubuntu-parental-control.local`
 - Chrome: `/etc/opt/chrome/policies/managed/ubuntu-parental-control.json`
 
-Beide Erweiterungen lesen ausschließlich `storage.managed`, prüfen Snapshot und
+Beide Erweiterungen lesen beim Start `storage.managed`, prüfen Snapshot und
 Prüfsumme erneut, berechnen Zeitpläne lokal und ersetzen ihre dynamischen
 `declarativeNetRequest`-Regeln atomar. Ein statischer, im Extension-Paket
 enthaltener Notfall-Regelsatz blockiert HTTP(S)-Navigation, solange kein gültiger
 Snapshot aktiv ist. Geblockte Navigationen werden auf eine lokale Hinweisseite
 der Extension umgeleitet; es werden dabei keine URLs gespeichert oder übertragen.
 
-Chrome meldet dynamisch geladene Policy-Änderungen über `storage.onChanged`.
-Firefox-Enterprise-Policies können je nach Firefox-Version erst nach einem
-Browserneustart neu eingelesen werden; Zeitplanwechsel benötigen keinen Neustart,
-weil sie innerhalb der Extension berechnet werden.
+Zusätzlich liefert der rootgeschützte Dienst neue validierte Snapshots über den
+lokalen Native Host. Dadurch aktualisieren Firefox und Chrome die aktiven
+DNR-Regeln sofort, ohne dass Firefox seine Enterprise Policy neu laden muss.
+Jeder Live-Snapshot besitzt eine ECDSA-P-256-Signatur über das exakte
+Snapshot-JSON. Der öffentliche Schlüssel wird über die Enterprise Policy
+verankert; ungültige oder mit einem fremden Schlüssel signierte Nachrichten
+werden verworfen.
+Chrome meldet Policy-Änderungen ergänzend über `storage.onChanged`. Fällt der
+Native Kanal aus, bleibt `storage.managed` der verbindliche Fallback.
 
 ### DNR-Grenze für Ausnahmen
 

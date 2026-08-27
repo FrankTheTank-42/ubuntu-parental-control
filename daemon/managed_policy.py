@@ -25,7 +25,9 @@ def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
-def make_managed_data(rules: dict[str, Any]) -> dict[str, object]:
+def make_managed_data(
+    rules: dict[str, Any], live_public_key_spki: str | None = None
+) -> dict[str, object]:
     dynamic_rule_count = 0
     for block in rules.get("blocks", []):
         exceptions = block.get("exceptions", {})
@@ -58,11 +60,14 @@ def make_managed_data(rules: dict[str, Any]) -> dict[str, object]:
         "revision": revision,
         "rules": normalized,
     }
-    return {
+    managed_data: dict[str, object] = {
         "protocol_version": 1,
         "revision": revision,
         "snapshot_json": _canonical_json(snapshot),
     }
+    if live_public_key_spki is not None:
+        managed_data["live_public_key_spki"] = live_public_key_spki
+    return managed_data
 
 
 def _read_object(path: Path, *, missing_ok: bool) -> dict[str, Any]:
@@ -155,8 +160,12 @@ class ManagedPolicyPublisher:
         self.firefox_policy = firefox_policy
         self.chrome_policy = chrome_policy
 
-    def __call__(self, rules: dict[str, Any]) -> None:
-        managed_data = make_managed_data(rules)
+    def __call__(self, rules: dict[str, Any]) -> dict[str, object]:
+        public_key = self.config.get("live_public_key_spki")
+        managed_data = make_managed_data(
+            rules,
+            str(public_key) if public_key is not None else None,
+        )
         browsers = self.config["managed_browsers"]
         if "chrome" in browsers:
             publish_chrome(
@@ -169,6 +178,7 @@ class ManagedPolicyPublisher:
             # Firefox is written last: this is the already mandatory browser and
             # its policy file also contains unrelated administrator settings.
             publish_firefox(self.firefox_policy, managed_data)
+        return managed_data
 
 
 def main() -> int:
@@ -177,6 +187,7 @@ def main() -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--firefox-policy", type=Path, required=True)
     parser.add_argument("--chrome-policy", type=Path, required=True)
+    parser.add_argument("--user-domains", type=Path)
     args = parser.parse_args()
 
     # Imports stay local so an installed copy can run beside daemon.py.
@@ -185,6 +196,11 @@ def main() -> int:
     try:
         config = load_config(args.config)
         rules = load_valid_rules(args.rules)
+        if args.user_domains is not None:
+            from user_rules import UserDomainStore
+
+            user_store = UserDomainStore(args.user_domains)
+            rules = user_store.merge(rules, user_store.load())
         ManagedPolicyPublisher(config, args.firefox_policy, args.chrome_policy)(rules)
     except (OSError, ValueError, PolicyPublicationError) as exc:
         print(f"Fehler: Managed Policy konnte nicht veröffentlicht werden: {exc}", file=os.sys.stderr)

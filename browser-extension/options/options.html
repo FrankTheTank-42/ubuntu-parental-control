@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Ubuntu Parental Control</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body class="mode-loading" aria-busy="false">
+    <header class="app-header">
+      <div>
+        <div class="title-line">
+          <p class="eyebrow">Ubuntu Parental Control</p>
+          <span id="view-mode" class="view-mode">Zugriff wird geprüft</span>
+        </div>
+        <h1>Webfilter-Regeln</h1>
+        <p class="subtitle">Aktive Sperren ansehen und erlaubte Domains zusätzlich einschränken.</p>
+      </div>
+      <button id="refresh" class="secondary" type="button">Aktualisieren</button>
+    </header>
+
+    <main>
+      <section id="connection" class="connection" aria-live="polite">
+        <span class="status-dot"></span>
+        <div>
+          <strong id="connection-title">Verbindung wird geprüft …</strong>
+          <p id="connection-detail"></p>
+        </div>
+      </section>
+
+      <section class="summary" aria-label="Regelübersicht">
+        <div><span id="block-count">–</span><small>Blocks</small></div>
+        <div><span id="domain-count">–</span><small>Domains</small></div>
+        <div><span id="revision">–</span><small>Revision</small></div>
+      </section>
+
+      <section>
+        <div class="section-heading">
+        <div>
+          <p class="eyebrow">Konfiguration</p>
+          <h2>Blocks</h2>
+        </div>
+        <div class="section-actions">
+          <p id="default-action" class="default-action"></p>
+          <button id="create-block" class="secondary" type="button" hidden>Block anlegen</button>
+        </div>
+        </div>
+        <div id="message" class="message" hidden role="status"></div>
+        <div id="blocks" class="blocks"></div>
+      </section>
+    </main>
+
+    <div id="busy-overlay" class="busy-overlay" hidden role="status" aria-live="assertive">
+      <div class="busy-card">
+        <span class="spinner" aria-hidden="true"></span>
+        <div>
+          <strong>Regeln werden gespeichert …</strong>
+          <p>Bitte warte auf die Bestätigung des Verwaltungsdienstes.</p>
+        </div>
+      </div>
+    </div>
+
+    <template id="block-template">
+      <article class="block-card">
+        <div class="block-heading">
+          <div>
+            <h3 class="block-name"></h3>
+            <code class="block-id"></code>
+          </div>
+          <div class="badges"></div>
+        </div>
+        <div class="block-meta"></div>
+        <div class="domain-list"></div>
+        <form class="add-domain-form" hidden>
+          <label>
+            Website zusätzlich blockieren
+            <span>Nur die Domain ohne <code>https://</code>, Pfad oder Port eingeben.</span>
+          </label>
+          <div class="input-row">
+            <input class="domain-input" type="text" inputmode="url" autocomplete="off"
+              placeholder="beispiel.de" maxlength="253" required>
+            <button type="submit">Domain blockieren</button>
+          </div>
+          <p class="append-note">Diese Ergänzung kann vom eingeschränkten Konto nicht entfernt werden.</p>
+        </form>
+        <form class="admin-form" hidden>
+          <div class="admin-title">
+            <div>
+              <strong>Administrativ bearbeiten</strong>
+              <span>Beim Speichern wird eine Polkit-Anmeldung verlangt.</span>
+            </div>
+            <div class="switches">
+              <label class="switch-label"><input class="admin-enabled" type="checkbox"> Aktiv</label>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label>Name<input class="admin-name" type="text" maxlength="120" required></label>
+            <label>Aktion<select class="admin-action"><option value="block">Blockieren</option><option value="allow">Erlauben</option></select></label>
+            <label>Priorität<input class="admin-priority" type="number" min="-1000" max="1000" required></label>
+            <label class="wide">Domains <span>Eine Domain pro Zeile</span><textarea class="admin-domains" rows="4"></textarea></label>
+            <label class="wide">URL-Patterns <span>Ein Pattern pro Zeile</span><textarea class="admin-patterns" rows="3"></textarea></label>
+            <label class="wide">URL-Regex <span><code>i:</code> oder <code>s:</code> voranstellen</span><textarea class="admin-regex" rows="3"></textarea></label>
+            <label class="wide">Domain-Ausnahmen <span>Eine Domain pro Zeile</span><textarea class="admin-exceptions" rows="3"></textarea></label>
+            <label class="wide">Zeitplan <span>JSON-Objekt oder leer für durchgehend</span><textarea class="admin-schedule" rows="5"></textarea></label>
+          </div>
+          <div class="admin-buttons">
+            <button type="submit">Block speichern</button>
+            <button class="danger delete-block" type="button">Block löschen</button>
+          </div>
+        </form>
+      </article>
+    </template>
+
+    <script src="options.js"></script>
+  </body>
+</html>

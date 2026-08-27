@@ -9,6 +9,9 @@
     },
     "snapshot_json": {
       "type": "string"
+    },
+    "live_public_key_spki": {
+      "type": "string"
     }
   }
 }
