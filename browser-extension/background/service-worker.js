@@ -17,7 +17,10 @@ const REFRESH_ALARM = "refresh-managed-rules";
 const NATIVE_HOST = "ubuntu_parental_control";
 const NATIVE_REQUEST_TIMEOUT_MS = 10_000;
 const ADMIN_REQUEST_TIMEOUT_MS = 205_000;
+const CONTEXT_MENU_ROOT = "upc-add-current-domain";
+const CONTEXT_MENU_PREFIX = `${CONTEXT_MENU_ROOT}:`;
 let updateChain = Promise.resolve();
+let contextMenuChain = Promise.resolve();
 let activeSnapshot = null;
 let trustedLivePublicKey = null;
 let nativePort = null;
@@ -27,6 +30,53 @@ let verifiedNativeStatus = null;
 let reconnectTimer = null;
 let requestCounter = 0;
 const nativeRequests = new Map();
+
+function rebuildContextMenus(rules) {
+  contextMenuChain = contextMenuChain
+    .catch(() => undefined)
+    .then(async () => {
+      await api.contextMenus.removeAll();
+      const blocking = rules.blocks.filter((block) => block.action === "block");
+      if (!blocking.length) return;
+      api.contextMenus.create({
+        id: CONTEXT_MENU_ROOT,
+        title: "Aktuelle Website zusätzlich blockieren",
+        contexts: ["page"],
+        documentUrlPatterns: ["http://*/*", "https://*/*"],
+      });
+      for (const block of blocking) {
+        api.contextMenus.create({
+          id: `${CONTEXT_MENU_PREFIX}${block.id}`,
+          parentId: CONTEXT_MENU_ROOT,
+          title: block.enabled ? block.name : `${block.name} (inaktiv)`,
+          contexts: ["page"],
+          documentUrlPatterns: ["http://*/*", "https://*/*"],
+        });
+      }
+    })
+    .catch((error) => {
+      console.error("Ubuntu Parental Control: Kontextmenü konnte nicht aufgebaut werden", error);
+    });
+}
+
+async function openContextDomainAddition(info) {
+  if (
+    typeof info?.menuItemId !== "string"
+    || !info.menuItemId.startsWith(CONTEXT_MENU_PREFIX)
+  ) return;
+  const blockId = info.menuItemId.slice(CONTEXT_MENU_PREFIX.length);
+  let page;
+  try {
+    page = new URL(info.pageUrl);
+  } catch (_error) {
+    return;
+  }
+  if (!(["http:", "https:"].includes(page.protocol)) || !page.hostname) return;
+  const optionsUrl = new URL(api.runtime.getURL("options/options.html"));
+  optionsUrl.searchParams.set("context_block", blockId);
+  optionsUrl.searchParams.set("context_domain", page.hostname.toLowerCase());
+  await api.tabs.create({ url: optionsUrl.href });
+}
 
 function enqueueUpdate(reason) {
   updateChain = updateChain
@@ -103,6 +153,7 @@ async function activateManagedData(managed, reason, source = "managed") {
   const compiled = UPC_RULE_ENGINE.compile(snapshot.rules, new Date());
   await installRules(compiled);
   activeSnapshot = snapshot;
+  rebuildContextMenus(snapshot.rules);
   console.info(
     `Ubuntu Parental Control: ${compiled.rules.length} Regeln aktiviert ` +
       `(Revision ${snapshot.revision.slice(0, 12)}, Grund ${reason})`,
@@ -294,6 +345,9 @@ async function handleUiMessage(message) {
         const adminState = await requestNative({ command: "base_rules" });
         baseRules = adminState.rules;
         userDomains = adminState.user_domains;
+      } else {
+        const childState = await requestNative({ command: "own_user_domains" });
+        userDomains = childState.user_domains;
       }
     } catch (error) {
       nativeError = error.message;
@@ -316,8 +370,13 @@ async function handleUiMessage(message) {
       block_id: message.block_id,
       domain: message.domain,
     });
-    if (result.managed) {
-      await activateManagedData(result.managed, "user-domain-added", "native");
+    if (!result.managed) {
+      throw new Error("Native Host hat keinen bestätigten Regelsnapshot zurückgegeben");
+    }
+    const snapshot = await activateManagedData(result.managed, "user-domain-added", "native");
+    const block = snapshot.rules.blocks.find((item) => item.id === message.block_id);
+    if (!block?.targets.domains.includes(message.domain)) {
+      throw new Error("Domain fehlt im bestätigten Regelsnapshot");
     }
     return result;
   }
@@ -370,7 +429,11 @@ api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   );
   return true;
 });
+api.contextMenus.onClicked.addListener((info) => {
+  openContextDomainAddition(info).catch((error) => {
+    console.error("Ubuntu Parental Control: Kontextmenü-Aktion fehlgeschlagen", error);
+  });
+});
 
 api.alarms.create(REFRESH_ALARM, { periodInMinutes: 1 });
 enqueueUpdate("service-worker-start");
-connectNativeHost();

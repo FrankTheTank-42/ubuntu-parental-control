@@ -86,7 +86,11 @@ Regelübersicht. Die Elternansicht bietet den vollständigen Editor. In der
 Kinderansicht bleiben die geschützten Einstellungen sichtbar, sind aber klar
 ausgegraut und technisch deaktiviert. Das Kind kann jede Blockierliste um eine
 Domain ergänzen, aber weder eigene noch vorgegebene Domains entfernen und keine
-Regel lockern.
+Regel lockern. Diese Ergänzungen verändern die Elternkonfiguration
+`/etc/ubuntu-parental-control/rules.json` bewusst nicht. Sie werden je UID
+getrennt und rootgeschützt in
+`/var/lib/ubuntu-parental-control/user-domains.json` gespeichert und erst im
+signierten effektiven Browser-Snapshot mit den Elternregeln vereinigt.
 
 In einem nicht als eingeschränkt registrierten Konto lassen sich Blocks
 anlegen, bearbeiten und löschen. Jede Speicherung öffnet eine neue
@@ -106,6 +110,13 @@ rootgeschützten ECDSA-Schlüssel signiert. Die Extension übernimmt den
 Kinderkonto überschriebener Native Host kann daher weder Regeln einschleusen
 noch den Elternmodus freischalten.
 
+Die Native-Messaging-Verbindung wird bewusst erst aufgebaut, wenn die
+Regelverwaltung geöffnet oder das Kontextmenü zum Ergänzen der aktuellen
+Website verwendet wird. Das Kontextmenü wird ohne Native Host aus dem bereits
+aktiven Regelsnapshot erzeugt. Nach Auswahl einer Blockierliste öffnet sich die
+Regelverwaltung, zeigt die lokale Einwilligung gegebenenfalls im unmittelbaren
+Zusammenhang mit der Aktion an und meldet anschließend Erfolg oder Fehler.
+
 Administrative Bearbeitung ist für ein separates, nicht eingeschränktes
 Ubuntu-Elternkonto vorgesehen. Im Kinderkonto sollte auch eine betreuende
 Person keine Polkit-Anmeldung für eine unerwartet angebotene Verwaltung
@@ -117,6 +128,36 @@ bestätigen.
 systemctl status ubuntu-parental-control.service
 journalctl -u ubuntu-parental-control.service
 ```
+
+Hat ein eingeschränktes Konto die einmalige Firefox-Snap-Einwilligung bereits
+verneint, steht in seiner Ubuntu-Anwendungsübersicht der Eintrag
+„Ubuntu Parental Control – Firefox verbinden“ bereit. Er erklärt die lokale
+Verbindung und setzt die Portalberechtigung nach einer ausdrücklichen
+Bestätigung wieder auf „erlaubt“. Dafür ist weder `sudo` noch ein
+Elternpasswort erforderlich, weil die Berechtigung ausschließlich zur
+betroffenen Benutzersitzung gehört und der Native Host die Kinderrechte
+weiterhin anhand der echten UID begrenzt.
+
+Bei einer fehlenden Firefox-Verbindung bietet auch die Regelverwaltung den
+Knopf „Firefox-Verbindung reparieren“ an. Er öffnet denselben lokalen Helfer
+über den fest registrierten Handler
+`ubuntu-parental-control://firefox-consent/allow`. Die Einwilligung wird erst
+nach der Bestätigung im Helfer gesetzt; ein bloßes Öffnen des Links reicht
+nicht aus.
+
+Alternativ lässt sich dasselbe Werkzeug im Terminal des betroffenen Kontos
+verwenden:
+
+```bash
+upc-firefox-consent status
+upc-firefox-consent allow
+upc-firefox-consent reset
+```
+
+`allow` erteilt die Einwilligung direkt. `reset` löscht den Portalentscheid,
+sodass Firefox beim nächsten Öffnen der Regelverwaltung oder Verwenden des
+Kontextmenüs erneut fragt. Das Werkzeug muss als betroffenes Konto und bewusst
+ohne `sudo` ausgeführt werden.
 
 ### Regeln sicher verwalten
 

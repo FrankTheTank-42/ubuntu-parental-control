@@ -26,6 +26,8 @@
         <div>
           <strong id="connection-title">Verbindung wird geprüft …</strong>
           <p id="connection-detail"></p>
+          <p id="connection-error-detail" class="connection-error-detail" hidden></p>
+          <a id="repair-native" class="repair-native" href="ubuntu-parental-control://firefox-consent/allow" hidden>Firefox-Verbindung reparieren</a>
         </div>
       </section>
 
@@ -82,8 +84,13 @@
               placeholder="beispiel.de" maxlength="253" required>
             <button type="submit">Domain blockieren</button>
           </div>
-          <p class="append-note">Diese Ergänzung kann vom eingeschränkten Konto nicht entfernt werden.</p>
+          <p class="append-note">Wird als geschützte Kinderergänzung getrennt von <code>rules.json</code> gespeichert und kann von diesem Konto nicht entfernt werden.</p>
         </form>
+        <div class="add-domain-unavailable" hidden role="alert">
+          <strong>Domain-Ergänzung nicht verfügbar</strong>
+          <p class="add-domain-unavailable-detail"></p>
+          <p>Bitte oben auf <strong>Aktualisieren</strong> klicken. Bleibt der Fehler bestehen, muss ein Elternteil die lokale Installation prüfen.</p>
+        </div>
         <form class="admin-form" hidden>
           <div class="admin-title">
             <div>

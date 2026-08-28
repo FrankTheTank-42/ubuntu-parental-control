@@ -33,13 +33,21 @@ const optionsSource = fs.readFileSync(
 );
 
 assert.ok(optionsHtml.includes('id="busy-overlay"'));
+assert.ok(optionsHtml.includes('id="connection-error-detail"'));
+assert.ok(optionsHtml.includes('id="repair-native"'));
+assert.ok(optionsHtml.includes('ubuntu-parental-control://firefox-consent/allow'));
+assert.ok(optionsHtml.includes('class="add-domain-unavailable"'));
 assert.ok(!optionsHtml.includes("admin-child-add"));
 assert.ok(optionsSource.includes('form.classList.add("locked")'));
 assert.ok(optionsSource.includes('document.body.classList.add(adminMode ? "mode-parent"'));
+assert.ok(optionsSource.includes('title: "Native Host nicht erreichbar"'));
+assert.ok(optionsSource.includes('if (childMode && block.action === "block")'));
+assert.ok(backgroundSource.includes("Domain fehlt im bestätigten Regelsnapshot"));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
-  assert.equal(manifest.version, "0.3.4");
+  assert.equal(manifest.version, "0.3.6");
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
+  assert.ok(manifest.permissions.includes("contextMenus"));
   assert.ok(manifest.permissions.includes("nativeMessaging"));
   assert.equal(manifest.options_ui.page, "options/options.html");
   assert.ok(
@@ -52,6 +60,7 @@ assert.deepEqual(failSafeRules[0].action, {
   type: "redirect",
   redirect: { extensionPath: "/blocked/blocked.html" },
 });
+assert.equal(chromeManifest.icons["128"], "icons/icon-128.png");
 
 function eventHook() {
   return {
@@ -90,9 +99,16 @@ function browserApi() {
       async updateDynamicRules() {},
       async updateStaticRules() {},
     },
+    contextMenus: {
+      created: [],
+      async removeAll() { this.created = []; },
+      create(item) { this.created.push(item); },
+      onClicked: eventHook(),
+    },
     runtime: {
       lastError: null,
       nativePort,
+      getURL(pathname) { return `moz-extension://test/${pathname}`; },
       connectNative(name) {
         assert.equal(name, "ubuntu_parental_control");
         return nativePort;
@@ -109,6 +125,7 @@ function browserApi() {
       },
       onChanged: eventHook(),
     },
+    tabs: { async create() {} },
   };
 }
 
@@ -128,6 +145,8 @@ function contextFor(apiName) {
   vm.runInContext(backgroundSource, context, { filename: "background/service-worker.js" });
   assert.equal(api.runtime.onStartup.listeners.length, 1);
   assert.equal(api.alarms.created.length, 1);
+  assert.equal(api.contextMenus.onClicked.listeners.length, 1);
+  assert.equal(api.runtime.nativePort.onMessage.listeners.length, 0);
 }
 
 {
@@ -141,6 +160,7 @@ function contextFor(apiName) {
   assert.deepEqual(imports, ["../common/rule-engine.js"]);
   assert.equal(api.runtime.onStartup.listeners.length, 1);
   assert.equal(api.alarms.created.length, 1);
+  assert.equal(api.runtime.nativePort.onMessage.listeners.length, 0);
 }
 
 console.log("Firefox- und Chrome-Hintergrundstart erfolgreich getestet.");

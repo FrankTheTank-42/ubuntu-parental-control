@@ -94,6 +94,20 @@ button.danger { color: #a51d2d; background: #fce8eb; }
 }
 
 .connection p { margin: 4px 0 0; color: #625b66; }
+.connection.error .connection-error-detail { color: #a51d2d; }
+.repair-native {
+  display: inline-block;
+  margin-top: 12px;
+  border-radius: 9px;
+  padding: 9px 13px;
+  color: white;
+  background: var(--accent);
+  font-weight: 750;
+  text-decoration: none;
+}
+.repair-native:hover { background: var(--accent-hover); }
+.repair-native:focus-visible { outline: 3px solid #3584e4; outline-offset: 2px; }
+.repair-native[hidden] { display: none; }
 .status-dot { flex: 0 0 11px; width: 11px; height: 11px; margin-top: 5px; border-radius: 50%; background: #f5c211; box-shadow: 0 0 0 5px #f5c21122; }
 .connection.connected .status-dot { background: #26a269; box-shadow: 0 0 0 5px #26a26922; }
 .connection.error .status-dot { background: #c01c28; box-shadow: 0 0 0 5px #c01c2822; }
@@ -148,6 +162,17 @@ button.danger { color: #a51d2d; background: #fce8eb; }
 .add-domain-form label span { display: block; margin-top: 3px; color: #77727b; font-size: .82rem; font-weight: 400; }
 .domain-input { flex: 1; min-width: 0; border: 1px solid #b8b6b2; border-radius: 10px; padding: 11px 13px; color: inherit; background: #fff; }
 .append-note { margin: 9px 0 0; color: #77727b; font-size: .8rem; }
+
+.add-domain-unavailable {
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: 1px solid #e5a5ad;
+  border-radius: 11px;
+  color: #7d1223;
+  background: #fff1f3;
+}
+.add-domain-unavailable p { margin: 5px 0 0; font-size: .86rem; }
+.connection-error-detail { overflow-wrap: anywhere; font-family: "Ubuntu Mono", ui-monospace, monospace; font-size: .8rem; }
 
 .admin-form { margin-top: 22px; padding-top: 20px; border-top: 1px solid #deddda; }
 .admin-title { align-items: flex-start; margin-bottom: 16px; }
@@ -242,6 +267,7 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   .domain.user-added { border-color: #b58300; background: #4a3b12; }
   .domain-input, .form-grid input, .form-grid select, .form-grid textarea { color: #f6f5f4; border-color: #666; background: #242424; }
   .mode-child .connection.connected { border-color: #365f91; background: #1d3047; }
+  .connection.error .connection-error-detail { color: #ffb4bd; }
   .admin-form.locked { background: #252525; }
   .admin-form.locked .admin-title strong { color: #c0bfbc; }
   .admin-form.locked input, .admin-form.locked select, .admin-form.locked textarea {
@@ -251,6 +277,7 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   }
   .busy-card { border-color: #555; background: #2b2b2b; }
   .busy-card p { color: #c0bfbc; }
+  .add-domain-unavailable { color: #ffb4bd; border-color: #8f3b49; background: #491d25; }
 }
 
 @media (max-width: 650px) {

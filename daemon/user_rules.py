@@ -354,6 +354,15 @@ class EffectiveRulePublisher:
         with self._lock:
             return copy.deepcopy(self.store.load())
 
+    def own_user_domain_snapshot(self, uid: int) -> dict[str, Any]:
+        with self._lock:
+            state = self.store.load()
+            own = state["users"].get(str(uid))
+            return {
+                "format_version": state["format_version"],
+                "users": {str(uid): copy.deepcopy(own)} if own is not None else {},
+            }
+
     def add_domain(self, uid: int, block_id: str, domain: str) -> dict[str, object]:
         with self._lock:
             if uid not in self.config["restricted_users"]:

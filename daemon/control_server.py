@@ -117,6 +117,12 @@ class ControlServer:
                 "rules": self.publisher.base_snapshot(),
                 "user_domains": self.publisher.user_domain_snapshot(),
             }
+        if command == "own_user_domains":
+            if uid not in self.publisher.config["restricted_users"]:
+                raise UserRuleError("Eigene Kinderergänzungen sind nur im Kinderkonto verfügbar")
+            return {
+                "user_domains": self.publisher.own_user_domain_snapshot(uid),
+            }
         if command == "add_domain":
             return self.publisher.add_domain(
                 uid,

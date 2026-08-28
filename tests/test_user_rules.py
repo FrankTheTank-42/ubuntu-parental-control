@@ -143,6 +143,11 @@ class UserRulesTest(unittest.TestCase):
                     ["social-school-hours", "self-blocked-sites"],
                     status["can_add_domains_to"],
                 )
+                own = server.dispatch(uid, {"command": "own_user_domains"})
+                self.assertEqual(
+                    {"format_version": 1, "users": {}},
+                    own["user_domains"],
+                )
                 with self.assertRaises(UserRuleError):
                     server.dispatch(uid, {"command": "base_rules"})
                 publication = server.dispatch(uid, {"command": "publication"})

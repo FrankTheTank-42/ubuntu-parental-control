@@ -19,6 +19,22 @@ Livekanal ist optional; sein Ausfall verändert die aktiven Regeln nicht und
 Für Firefox Snap wird der Native Host über das WebExtensions-XDG-Portal
 gestartet. Eine verweigerte oder fehlende Portalberechtigung schaltet nur
 Liveaktualisierung und Editor ab, nicht den verwalteten Filter.
+Die Extension startet diese Verbindung nicht beim Browserstart, sondern erst
+beim Öffnen der Regelverwaltung oder nach einer konkreten Kontextmenü-Aktion.
+Die Portalabfrage steht dadurch in einem verständlichen Zusammenhang mit der
+gewünschten lokalen Änderung.
+Eine zuvor verweigerte Entscheidung kann das betroffene Konto über den
+installierten Sitzungshelfer `upc-firefox-consent` wieder erlauben oder
+zurücksetzen. Der Helfer ändert nur den Eintrag
+`webextensions/ubuntu_parental_control/snap.firefox` im XDG PermissionStore und
+benötigt keine Rootrechte. Die eigentlichen Schreibrechte bleiben unabhängig
+davon durch Peer-UID, Rollenprüfung und Signaturen begrenzt.
+Die Regelverwaltung erreicht den Helfer auch ohne Native Messaging über den
+systemweit registrierten URI-Handler
+`ubuntu-parental-control://firefox-consent/allow`. Der Helfer akzeptiert nur
+diese exakte URI und verlangt interaktiv eine Bestätigung. Dadurch kann eine
+Website höchstens den Dialog öffnen, aber niemals die Einwilligung selbst
+erteilen.
 
 ## Veröffentlichte Daten
 
@@ -78,10 +94,20 @@ Registrierte Kinder-UIDs dürfen ausschließlich `add_domain` für Regeln mit
 `action: block` ausführen. Diese append-only Berechtigung gilt immer und kann
 nicht versehentlich über einen UI-Schalter abgeschaltet werden. Der Socket
 bietet keine Lösch- oder Lockerungsoperation für diese Rolle.
+Die Kinderansicht darf zusätzlich ausschließlich die eigenen, bereits
+gespeicherten Ergänzungen abfragen, um sie kenntlich zu machen; Ergänzungen
+anderer UIDs und die unveränderten Basisregeln werden dabei nicht offengelegt.
 Administratoreingriffe laufen separat über einen rootinstallierten Helper und
 Polkit mit `auth_admin` für jede einzelne Speicherung. Der Helper akzeptiert
 nur vollständig validierte Regelobjekte oder das gezielte Entfernen einer
 append-only Ergänzung.
+
+Das Kontextmenü entsteht ausschließlich aus dem bereits geprüften aktiven
+Snapshot und benötigt keinen Native Host. Nach Auswahl einer Blockierliste
+extrahiert die Extension den Hostnamen aus der ausdrücklich ausgewählten
+HTTP(S)-Seite, öffnet die Regelverwaltung und verwendet anschließend denselben
+UID-authentifizierten Schreibweg wie die manuelle Domain-Eingabe. Pfad und
+Suchparameter werden nicht in die Regel übernommen.
 
 Nach einer erfolgreichen Polkit-Änderung wartet der Native Host auf eine neue
 Veröffentlichungsnummer des Daemons und die passende Basis- beziehungsweise

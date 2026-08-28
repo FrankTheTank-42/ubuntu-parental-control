@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Ubuntu Parental Control – Firefox verbinden
+GenericName=Firefox-Einwilligung verwalten
+Comment=Lokale Verbindung zum Ubuntu-Parental-Control-Dienst erlauben
+Exec=/usr/bin/upc-firefox-consent --from-uri %u
+Icon=security-high
+Terminal=true
+Categories=Settings;Security;
+Keywords=Firefox;Kindersicherung;Webfilter;Einwilligung;
+MimeType=x-scheme-handler/ubuntu-parental-control;

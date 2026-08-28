@@ -1,11 +1,21 @@
 "use strict";
 
 const api = globalThis.browser ?? globalThis.chrome;
+const isFirefox = typeof globalThis.browser !== "undefined";
 const blocksElement = document.querySelector("#blocks");
 const template = document.querySelector("#block-template");
 const messageElement = document.querySelector("#message");
 let currentState = null;
 let adminBusy = false;
+let refreshAfterRepair = false;
+let pendingContextAddition = (() => {
+  const parameters = new URLSearchParams(location.search);
+  const blockId = parameters.get("context_block");
+  const domain = parameters.get("context_domain");
+  if (!blockId || !domain) return null;
+  history.replaceState(null, "", location.pathname);
+  return { blockId, domain: domain.toLowerCase() };
+})();
 
 async function send(message) {
   const response = await api.runtime.sendMessage(message);
@@ -33,27 +43,58 @@ function badge(text, className = "") {
   return item;
 }
 
+function nativeFailure(native) {
+  const error = String(native?.error ?? "").trim();
+  if (!native?.connected) {
+    let reason = "Der Browser konnte den lokalen Native Host nicht starten oder keine Verbindung zu ihm herstellen.";
+    if (/no such native application|native.*host.*not found|nicht gefunden/i.test(error)) {
+      reason = "Der Browser hat die Registrierung des lokalen Native Hosts nicht gefunden.";
+    } else if (/permission|denied|not allowed|verweigert|berechtigung/i.test(error)) {
+      reason = "Der Browser oder das WebExtensions-Portal hat den Zugriff auf den Native Host verweigert.";
+      if (isFirefox) {
+        reason +=
+          " Starte im betroffenen Ubuntu-Konto „Ubuntu Parental Control – Firefox verbinden“, "
+          + "um die lokale Verbindung wieder zu erlauben.";
+      }
+    } else if (/timeout|zeitüberschreitung/i.test(error)) {
+      reason = "Der Native Host hat nicht rechtzeitig geantwortet.";
+    } else if (/disconnect|closed|exit|getrennt|beendet/i.test(error)) {
+      reason = "Der Native Host wurde nach dem Start unerwartet beendet oder getrennt.";
+    }
+    return {
+      title: "Native Host nicht erreichbar",
+      detail: `${reason} Die aktiven Filterregeln bleiben erhalten, Änderungen sind jedoch gesperrt.`,
+      technical: error,
+    };
+  }
+  return {
+    title: "Kontoberechtigung nicht bestätigt",
+    detail: "Der Native Host ist verbunden, aber die sichere Zuordnung zum Eltern- oder Kinderkonto ist fehlgeschlagen. Änderungen sind deshalb gesperrt.",
+    technical: error,
+  };
+}
+
 function renderConnection(native) {
   const connection = document.querySelector("#connection");
   const title = document.querySelector("#connection-title");
   const detail = document.querySelector("#connection-detail");
+  const errorDetail = document.querySelector("#connection-error-detail");
+  const repair = document.querySelector("#repair-native");
   connection.classList.remove("connected", "error");
-  if (!native.connected) {
+  errorDetail.hidden = true;
+  errorDetail.textContent = "";
+  repair.hidden = true;
+  if (!native.connected || !native.status) {
+    const failure = nativeFailure(native);
     connection.classList.add("error");
-    title.textContent = "Nur-Lesen-Modus";
-    detail.textContent = native.error
-      ? `Der sichere Verwaltungsdienst ist nicht erreichbar: ${native.error}`
-      : "Der sichere Verwaltungsdienst ist nicht erreichbar.";
+    title.textContent = failure.title;
+    detail.textContent = failure.detail;
+    if (failure.technical) {
+      errorDetail.textContent = `Technisches Detail: ${failure.technical}`;
+      errorDetail.hidden = false;
+    }
     document.querySelector("#view-mode").textContent = "Nur-Lesen-Ansicht";
-    return;
-  }
-  if (!native.status) {
-    connection.classList.add("error");
-    title.textContent = "Nur-Lesen-Modus";
-    detail.textContent = native.error
-      ? `Der Kontostatus konnte nicht sicher bestätigt werden: ${native.error}`
-      : "Der Kontostatus konnte nicht sicher bestätigt werden.";
-    document.querySelector("#view-mode").textContent = "Nur-Lesen-Ansicht";
+    if (!native.connected && isFirefox) repair.hidden = false;
     return;
   }
   connection.classList.add("connected");
@@ -155,6 +196,51 @@ async function applyAdminRules(rules, successMessage) {
   );
 }
 
+async function applyContextDomain(state, addition) {
+  const block = state.rules?.blocks.find((item) => item.id === addition.blockId);
+  if (!block || block.action !== "block") {
+    throw new Error("Die ausgewählte Blockierliste ist nicht mehr verfügbar.");
+  }
+  if (block.targets.domains.includes(addition.domain)) {
+    throw new Error(`${addition.domain} ist bereits in „${block.name}“ enthalten.`);
+  }
+  if (!state.native.connected || !state.native.status) {
+    throw new Error(nativeFailure(state.native).detail);
+  }
+  if (state.native.status.restricted) {
+    setAdminBusy(true);
+    showMessage(`${addition.domain} wird zu „${block.name}“ hinzugefügt …`);
+    try {
+      await send({
+        type: "add_domain",
+        block_id: block.id,
+        domain: addition.domain,
+      });
+      showMessage(
+        `${addition.domain} wurde als geschützte Kinderergänzung zu „${block.name}“ gespeichert.`,
+      );
+      await load();
+    } finally {
+      setAdminBusy(false);
+    }
+    return;
+  }
+  if (!state.base_rules) {
+    throw new Error("Die administrativen Basisregeln sind nicht verfügbar.");
+  }
+  const rules = structuredClone(state.base_rules);
+  const baseBlock = rules.blocks.find((item) => item.id === block.id);
+  if (!baseBlock || baseBlock.action !== "block") {
+    throw new Error("Die ausgewählte Blockierliste ist administrativ nicht verfügbar.");
+  }
+  baseBlock.targets.domains.push(addition.domain);
+  baseBlock.targets.domains.sort();
+  await applyAdminRules(
+    rules,
+    `${addition.domain} wurde dauerhaft zu „${baseBlock.name}“ hinzugefügt.`,
+  );
+}
+
 function setupAdminForm(card, block, baseRules, editable) {
   const form = card.querySelector(".admin-form");
   form.hidden = false;
@@ -237,13 +323,18 @@ function renderBlocks(state) {
     showMessage("Es ist noch kein gültiger Regelsnapshot verfügbar.", true);
     return;
   }
-  const addable = new Set(state.native.status?.can_add_domains_to ?? []);
   let domainCount = 0;
   for (const block of rules.blocks) {
     const baseBlock = adminMode
       ? state.base_rules?.blocks.find((item) => item.id === block.id)
       : null;
-    const baseDomains = new Set(baseBlock?.targets.domains ?? block.targets.domains);
+    const ownDomains = new Set(
+      state.user_domains?.users?.[String(state.native.status?.uid)]?.[block.id] ?? [],
+    );
+    const baseDomains = new Set(
+      baseBlock?.targets.domains
+        ?? block.targets.domains.filter((domain) => !ownDomains.has(domain)),
+    );
     domainCount += block.targets.domains.length;
     const card = template.content.firstElementChild.cloneNode(true);
     card.querySelector(".block-name").textContent = block.name;
@@ -265,9 +356,11 @@ function renderBlocks(state) {
         item.textContent = domain;
         if (!baseDomains.has(domain)) {
           const ownerUid = userDomainOwner(state, block.id, domain);
-          item.title = ownerUid
-            ? `Von eingeschränktem Konto UID ${ownerUid} ergänzt`
-            : "Von einem eingeschränkten Konto ergänzt";
+          item.title = childMode && ownerUid === state.native.status.uid
+            ? "Von dir als geschützte Kinderergänzung gespeichert"
+            : ownerUid
+              ? `Von eingeschränktem Konto UID ${ownerUid} ergänzt`
+              : "Von einem eingeschränkten Konto ergänzt";
           if (adminMode && ownerUid) {
             const remove = document.createElement("button");
             remove.type = "button";
@@ -303,7 +396,7 @@ function renderBlocks(state) {
     }
 
     const form = card.querySelector(".add-domain-form");
-    if (state.native.connected && addable.has(block.id)) {
+    if (childMode && block.action === "block") {
       form.hidden = false;
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -317,7 +410,9 @@ function renderBlocks(state) {
         try {
           await send({ type: "add_domain", block_id: block.id, domain });
           input.value = "";
-          showMessage(`${domain} wurde dauerhaft zu „${block.name}“ hinzugefügt.`);
+          showMessage(
+            `${domain} wurde als geschützte Kinderergänzung zu „${block.name}“ gespeichert.`,
+          );
           await load();
         } catch (error) {
           showMessage(error.message, true);
@@ -326,6 +421,19 @@ function renderBlocks(state) {
           setAdminBusy(false);
         }
       });
+    } else if (
+      block.action === "block"
+      && (!state.native.connected || !state.native.status || childMode)
+    ) {
+      const unavailable = card.querySelector(".add-domain-unavailable");
+      unavailable.hidden = false;
+      const unavailableDetail = unavailable.querySelector(".add-domain-unavailable-detail");
+      if (!state.native.connected || !state.native.status) {
+        unavailableDetail.textContent = nativeFailure(state.native).detail;
+      } else {
+        unavailableDetail.textContent =
+          "Der Native Host hat für diese Blockierliste keine sichere Schreibfreigabe zurückgegeben.";
+      }
     }
     if (adminMode && state.base_rules && baseBlock) {
       setupAdminForm(card, baseBlock, state.base_rules, true);
@@ -353,6 +461,15 @@ async function load() {
     currentState = state;
     renderConnection(state.native);
     renderBlocks(state);
+    if (pendingContextAddition) {
+      const addition = pendingContextAddition;
+      pendingContextAddition = null;
+      try {
+        await applyContextDomain(state, addition);
+      } catch (error) {
+        showMessage(`Website konnte nicht hinzugefügt werden: ${error.message}`, true);
+      }
+    }
   } catch (error) {
     renderConnection({ connected: false, error: error.message, status: null });
     showMessage(error.message, true);
@@ -360,6 +477,17 @@ async function load() {
 }
 
 document.querySelector("#refresh").addEventListener("click", load);
+document.querySelector("#repair-native").addEventListener("click", () => {
+  refreshAfterRepair = true;
+  showMessage(
+    "Das lokale Einwilligungswerkzeug wird geöffnet. Kehre danach zu dieser Seite zurück.",
+  );
+});
+window.addEventListener("focus", () => {
+  if (!refreshAfterRepair) return;
+  refreshAfterRepair = false;
+  setTimeout(load, 500);
+});
 document.querySelector("#create-block").addEventListener("click", async () => {
   if (!currentState?.base_rules) return;
   const name = prompt(

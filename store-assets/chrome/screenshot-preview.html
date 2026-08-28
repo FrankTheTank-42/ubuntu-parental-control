@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Ubuntu Parental Control – Elternansicht</title>
+    <link rel="stylesheet" href="../../browser-extension/options/options.css">
+    <style>
+      :root { color-scheme: light; }
+      body { padding-top: 30px; padding-bottom: 40px; }
+      .connection { margin-top: 24px; }
+      .summary { margin-bottom: 30px; }
+    </style>
+  </head>
+  <body class="mode-parent" aria-busy="false">
+    <header class="app-header">
+      <div>
+        <div class="title-line"><p class="eyebrow">Ubuntu Parental Control</p><span class="view-mode">Elternansicht</span></div>
+        <h1>Webfilter-Regeln</h1>
+        <p class="subtitle">Aktive Sperren verwalten und für Firefox und Chrome gemeinsam anwenden.</p>
+      </div>
+      <button class="secondary" type="button">Aktualisieren</button>
+    </header>
+    <main>
+      <section class="connection connected">
+        <span class="status-dot"></span>
+        <div><strong>Administrativer Editor verfügbar</strong><p>Änderungen werden sicher über den lokalen Verwaltungsdienst aktiviert.</p></div>
+      </section>
+      <section class="summary">
+        <div><span>3</span><small>Blocks</small></div><div><span>12</span><small>Domains</small></div><div><span>7a12c4f90b</span><small>Revision</small></div>
+      </section>
+      <section>
+        <div class="section-heading">
+          <div><p class="eyebrow">Konfiguration</p><h2>Blocks</h2></div>
+          <div class="section-actions"><p class="default-action">Standard: erlauben</p><button class="secondary">Block anlegen</button></div>
+        </div>
+        <div class="blocks">
+          <article class="block-card">
+            <div class="block-heading">
+              <div><h3>Soziale Medien am Abend</h3><code class="block-id">Technische ID: soziale-medien-abends</code></div>
+              <div class="badges"><span class="badge block">Blockieren</span><span class="badge">Aktiv</span><span class="badge">Priorität 20</span></div>
+            </div>
+            <div class="block-meta">1 Zeitfenster · Europe/Berlin</div>
+            <div class="domain-list"><span class="domain">instagram.com</span><span class="domain">tiktok.com</span><span class="domain">youtube.com</span></div>
+            <form class="admin-form">
+              <div class="admin-title">
+                <div><strong>Administrativ bearbeiten</strong><span>Beim Speichern wird eine Polkit-Anmeldung verlangt.</span></div>
+                <div class="switches"><label class="switch-label"><input type="checkbox" checked> Aktiv</label></div>
+              </div>
+              <div class="form-grid">
+                <label>Name<input type="text" value="Soziale Medien am Abend"></label>
+                <label>Aktion<select><option>Blockieren</option></select></label>
+                <label>Priorität<input type="number" value="20"></label>
+                <label class="wide">Domains <span>Eine Domain pro Zeile</span><textarea rows="3">instagram.com&#10;tiktok.com&#10;youtube.com</textarea></label>
+              </div>
+              <div class="admin-buttons"><button>Block speichern</button><button class="danger">Block löschen</button></div>
+            </form>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

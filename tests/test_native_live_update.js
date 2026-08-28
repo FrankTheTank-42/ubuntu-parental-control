@@ -111,6 +111,27 @@ async function main() {
         });
         return;
       }
+      if (request.command === "own_user_domains") {
+        respond({
+          user_domains: {
+            format_version: 1,
+            users: { "1001": { "self-blocked-sites": ["child.example"] } },
+          },
+        });
+        return;
+      }
+      if (request.command === "add_domain") {
+        respond({
+          block_id: request.block_id,
+          domain: request.domain,
+          managed: await signedManaged(
+            rules(["example.com", request.domain]),
+            keyPair,
+            publicKeySpki,
+          ),
+        });
+        return;
+      }
       if (request.command === "admin_apply") {
         adminRequestCount += 1;
         respond({
@@ -139,6 +160,8 @@ async function main() {
     },
   };
   let dynamicRules = [];
+  const createdContextMenus = [];
+  const createdTabs = [];
   let currentManaged = managed(rules(["example.com"]), publicKeySpki);
   const api = {
     alarms: { create() {}, onAlarm: hook() },
@@ -149,9 +172,15 @@ async function main() {
       async updateDynamicRules(update) { dynamicRules = update.addRules; },
       async updateStaticRules() {},
     },
+    contextMenus: {
+      async removeAll() { createdContextMenus.length = 0; },
+      create(item) { createdContextMenus.push(item); },
+      onClicked: hook(),
+    },
     runtime: {
       lastError: null,
       connectNative() { return nativePort; },
+      getURL(pathname) { return `moz-extension://test/${pathname}`; },
       onInstalled: hook(),
       onStartup: hook(),
       onMessage: hook(),
@@ -160,6 +189,7 @@ async function main() {
       managed: { async get() { return currentManaged; } },
       onChanged: hook(),
     },
+    tabs: { async create(options) { createdTabs.push(options); } },
   };
   const scheduledTimeouts = [];
   const context = vm.createContext({
@@ -167,6 +197,7 @@ async function main() {
     console: { error() {}, info() {} },
     crypto: cryptoModule.webcrypto,
     TextEncoder,
+    URL,
     atob,
     setTimeout(callback, milliseconds) {
       scheduledTimeouts.push(milliseconds);
@@ -179,17 +210,45 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(dynamicRules.length, 1);
   assert.equal(dynamicRules[0].condition.requestDomains.join(","), "example.com");
+  assert.equal(nativePort.onMessage.listeners.length, 0);
+  assert.equal(createdContextMenus.length, 2);
+
+  const contextMenuClick = api.contextMenus.onClicked.listeners[0];
+  contextMenuClick({
+    menuItemId: "upc-add-current-domain:self-blocked-sites",
+    pageUrl: "https://WWW.Example.NET/watch?v=1",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(createdTabs.length, 1);
+  assert.match(createdTabs[0].url, /context_block=self-blocked-sites/);
+  assert.match(createdTabs[0].url, /context_domain=www.example.net/);
+  assert.equal(nativePort.onMessage.listeners.length, 0);
 
   const runtimeMessage = api.runtime.onMessage.listeners[0];
   const uiState = await new Promise((resolve) => {
     runtimeMessage({ type: "get_ui_state" }, null, resolve);
   });
   assert.equal(uiState.ok, true);
+  assert.equal(nativePort.onMessage.listeners.length, 1);
   assert.equal(uiState.result.native.status.restricted, true);
+  assert.deepEqual(
+    Array.from(uiState.result.user_domains.users["1001"]["self-blocked-sites"]),
+    ["child.example"],
+  );
   assert.deepEqual(
     Array.from(uiState.result.native.status.can_add_domains_to),
     ["self-blocked-sites"],
   );
+  const childAddition = await new Promise((resolve) => {
+    runtimeMessage({
+      type: "add_domain",
+      block_id: "self-blocked-sites",
+      domain: "new-child.example",
+    }, null, resolve);
+  });
+  assert.equal(childAddition.ok, true);
+  assert.equal(dynamicRules.length, 2);
+  assert.equal(dynamicRules[1].condition.requestDomains.join(","), "new-child.example");
   const rejectedAdminEdit = await new Promise((resolve) => {
     runtimeMessage({ type: "admin_apply", rules: rules([]) }, null, resolve);
   });

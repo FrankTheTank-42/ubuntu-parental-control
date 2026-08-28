@@ -1,5 +1,44 @@
 # Versionshinweise
 
+## 0.3.6
+
+### Firefox/AMO
+
+- Zeigt die Domain-Eingabe in jedem bestätigten Kinderkonto für jede
+  Blockierliste zuverlässig an und markiert eigene Ergänzungen als „Von dir
+  ergänzt“. Die Oberfläche erklärt, dass diese manipulationsgeschützt getrennt
+  von den Elternregeln in `user-domains.json` gespeichert werden.
+- Meldet das Hinzufügen erst als erfolgreich, nachdem der Native Host einen
+  neuen signierten Snapshot geliefert hat, die Domain darin enthalten ist und
+  der Browser diesen Snapshot als aktiven Filter übernommen hat.
+
+## 0.3.5
+
+### Firefox/AMO
+
+- Zeigt einen nicht erreichbaren Native Host jetzt deutlich als Ursache des
+  Nur-Lesen-Modus an, statt die Eingabe zum Ergänzen von Domains kommentarlos
+  auszublenden.
+- Unterscheidet zwischen einer fehlenden Host-Verbindung und einem nicht
+  bestätigten Kontostatus. Bekannte Fehler wie eine fehlende Registrierung,
+  eine verweigerte Portalberechtigung, eine Zeitüberschreitung oder ein
+  unerwarteter Verbindungsabbruch erhalten verständliche Hinweise.
+- Blendet an betroffenen Blockierlisten ein eigenes Fehlerfeld ein und zeigt
+  das unveränderte technische Detail zusätzlich in der globalen Statusbox an.
+  Die aktiven Filterregeln bleiben währenddessen weiterhin wirksam.
+- Baut die Native-Messaging-Verbindung nicht mehr beim Browserstart auf. Die
+  Firefox-Snap-Einwilligung erscheint erst, wenn die Regelverwaltung oder eine
+  konkrete Kontextmenü-Aktion den lokalen Verwaltungsdienst benötigt.
+- Ergänzt auf HTTP- und HTTPS-Seiten das Kontextmenü „Aktuelle Website
+  zusätzlich blockieren“. Die gewünschte Blockierliste wird als Untermenü
+  gewählt; anschließend zeigt die Regelverwaltung Erfolg oder Fehler an.
+- Installiert „Ubuntu Parental Control – Firefox verbinden“ in der
+  Ubuntu-Anwendungsübersicht. Ein Kinderkonto kann damit eine zuvor
+  verweigerte Firefox-Snap-Einwilligung verständlich und ohne Elternpasswort
+  wieder erteilen; die UID-basierten append-only Rechte bleiben unverändert.
+- Verknüpft den Sitzungshelfer direkt aus der Fehlerbox der Regelverwaltung.
+  Der feste lokale URL-Handler akzeptiert nur die vorgesehene Reparaturaktion
+  und erteilt ohne die anschließende ausdrückliche Bestätigung keine Freigabe.
 ## 0.3.4
 
 ### Firefox/AMO

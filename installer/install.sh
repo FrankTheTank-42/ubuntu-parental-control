@@ -71,6 +71,7 @@ command -v python3 >/dev/null || die "python3 fehlt"
 command -v pkexec >/dev/null || die "pkexec (polkit) fehlt"
 command -v openssl >/dev/null || die "openssl fehlt"
 command -v base64 >/dev/null || die "base64 fehlt"
+command -v gdbus >/dev/null || die "gdbus (GLib) fehlt"
 if [[ -n "$chrome_extension_id" && ! "$chrome_extension_id" =~ ^[a-p]{32}$ ]]; then
   die "Chrome-Extension-ID muss aus 32 Zeichen a-p bestehen"
 fi
@@ -104,7 +105,7 @@ except (AttributeError, ValueError):
     raise SystemExit(f"Fehler: ungültige XPI-Version {version!r}")
 if version_tuple < (0, 3, 0):
     raise SystemExit("Fehler: XPI ist älter als 0.3.0 und enthält die sichere Regelverwaltung noch nicht")
-required = {"storage", "alarms", "declarativeNetRequest", "nativeMessaging"}
+required = {"storage", "alarms", "contextMenus", "declarativeNetRequest", "nativeMessaging"}
 if not required.issubset(set(manifest.get("permissions", []))):
     raise SystemExit("Fehler: XPI enthält nicht alle benötigten Webfilter-Berechtigungen")
 required_hosts = {"http://*/*", "https://*/*"}
@@ -130,6 +131,8 @@ readonly POLICY_FILE="$(prefix_path /etc/firefox/policies/policies.json)"
 readonly EXTENSION_DIR="$(prefix_path /etc/firefox/policies/extensions)"
 readonly LIB_DIR="$(prefix_path /usr/lib/ubuntu-parental-control)"
 readonly UPCCTL="$(prefix_path /usr/sbin/upcctl)"
+readonly FIREFOX_CONSENT="$(prefix_path /usr/bin/upc-firefox-consent)"
+readonly FIREFOX_CONSENT_DESKTOP="$(prefix_path /usr/share/applications/ubuntu-parental-control-firefox-consent.desktop)"
 readonly FIREFOX_NATIVE_MANIFEST="$(prefix_path /usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json)"
 readonly CHROME_NATIVE_MANIFEST="$(prefix_path /etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json)"
 readonly POLKIT_POLICY="$(prefix_path /usr/share/polkit-1/actions/local.ubuntu-parental-control.policy)"
@@ -205,6 +208,10 @@ install -m 0755 "$PROJECT_ROOT/daemon/native_host.py" "$LIB_DIR/native_host.py"
 install -m 0755 "$PROJECT_ROOT/daemon/admin_helper.py" "$LIB_DIR/admin_helper.py"
 install -m 0755 "$PROJECT_ROOT/daemon/upcctl.py" "$LIB_DIR/upcctl.py"
 install -D -m 0755 "$PROJECT_ROOT/installer/upcctl" "$UPCCTL"
+install -D -m 0755 "$PROJECT_ROOT/installer/firefox_native_consent.py" "$FIREFOX_CONSENT"
+install -D -m 0644 \
+  "$PROJECT_ROOT/installer/ubuntu-parental-control-firefox-consent.desktop" \
+  "$FIREFOX_CONSENT_DESKTOP"
 install -m 0644 "$PROJECT_ROOT/daemon/ubuntu-parental-control.service" "$SYSTEMD_DIR/ubuntu-parental-control.service"
 install -D -m 0644 "$PROJECT_ROOT/installer/local.ubuntu-parental-control.policy" "$POLKIT_POLICY"
 install -m 0644 "$xpi_path" "$EXTENSION_DIR/webfilter.xpi"
@@ -255,6 +262,9 @@ python3 "$LIB_DIR/managed_policy.py" \
   --chrome-policy "$CHROME_POLICY"
 
 if [[ "$root_prefix" == "/" ]]; then
+  if command -v update-desktop-database >/dev/null; then
+    update-desktop-database /usr/share/applications
+  fi
   systemctl daemon-reload
   systemctl enable ubuntu-parental-control.service
   if [[ "$start_service" == true ]]; then

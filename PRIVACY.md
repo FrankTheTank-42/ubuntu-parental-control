@@ -24,16 +24,22 @@ für diesen Zweck erforderlichen Daten:
 - vom Administrator konfigurierte Domains, URL-Patterns, reguläre Ausdrücke,
   Ausnahmen, Prioritäten und Zeitpläne;
 - Domains, die ein eingeschränktes Konto bewusst zu einer Blockierliste
-  hinzufügt;
+  hinzufügt, einschließlich des Hostnamens der aktuellen Seite, wenn die
+  Person ausdrücklich den entsprechenden Kontextmenüeintrag auswählt;
 - technische Prüfsummen, Revisionsnummern, Signaturen und zufällige Nonces zur
   Integritäts- und Authentizitätsprüfung lokaler Regelnachrichten.
 
-Die Erweiterung liest, protokolliert oder speichert insbesondere keine
-tatsächlich besuchten URLs, keine Browserhistorie, keine Seiteninhalte, keine
-Formulareingaben, keine Passwörter, keine Cookies und keine persönlichen
-Kommunikationsinhalte. Chrome führt den Abgleich einer Navigation mit den
-Filterregeln intern über `declarativeNetRequest` aus; die aufgerufene URL wird
-der Erweiterung dabei nicht als Browserverlauf übermittelt.
+Die Erweiterung überwacht, protokolliert oder speichert insbesondere keine
+Browserhistorie, keine Seiteninhalte, keine Formulareingaben, keine Passwörter,
+keine Cookies und keine persönlichen Kommunikationsinhalte. Nur bei einer
+ausdrücklichen Auswahl von „Aktuelle Website zusätzlich blockieren“ verarbeitet
+sie einmalig die aktuelle HTTP- oder HTTPS-Adresse im Arbeitsspeicher und
+übernimmt ausschließlich deren Hostnamen als neue lokale Filterregel. Pfad,
+Suchparameter und Seiteninhalt werden dabei nicht gespeichert. Den normalen
+Abgleich einer Navigation mit den
+Filterregeln führt Chrome intern über `declarativeNetRequest` aus; die
+aufgerufene URL wird der Erweiterung dabei nicht als Browserverlauf
+übermittelt.
 
 ## Verarbeitung und Speicherung
 

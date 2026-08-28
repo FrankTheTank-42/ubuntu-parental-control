@@ -263,6 +263,8 @@ rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/native_host.py)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/admin_helper.py)"
 rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/upcctl.py)"
 rm -f -- "$(prefix_path /usr/sbin/upcctl)"
+rm -f -- "$(prefix_path /usr/bin/upc-firefox-consent)"
+rm -f -- "$(prefix_path /usr/share/applications/ubuntu-parental-control-firefox-consent.desktop)"
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/rules.last-known-good.json)"
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json)"
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json.lock)"
@@ -285,6 +287,9 @@ rmdir --ignore-fail-on-non-empty \
   "$STATE_DIR" 2>/dev/null || true
 
 if [[ "$root_prefix" == "/" ]]; then
+  if command -v update-desktop-database >/dev/null; then
+    update-desktop-database /usr/share/applications
+  fi
   systemctl daemon-reload
 fi
 

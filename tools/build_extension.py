@@ -55,6 +55,8 @@ def main() -> None:
             raise SystemExit(f"{browser}-Manifest veröffentlicht die Blockseite nicht")
         if "nativeMessaging" not in manifest.get("permissions", []):
             raise SystemExit(f"{browser}-Manifest enthält nativeMessaging nicht")
+        if "contextMenus" not in manifest.get("permissions", []):
+            raise SystemExit(f"{browser}-Manifest enthält contextMenus nicht")
         if manifest.get("options_ui", {}).get("page") != "options/options.html":
             raise SystemExit(f"{browser}-Manifest bindet die Optionsseite nicht ein")
     for required in (SOURCE / "options" / "options.html", SOURCE / "options" / "options.js"):
