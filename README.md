@@ -1,5 +1,7 @@
 # Ubuntu Parental Control
 
+[![Tests](https://github.com/FrankTheTank-42/ubuntu-parental-control/actions/workflows/ci.yml/badge.svg)](https://github.com/FrankTheTank-42/ubuntu-parental-control/actions/workflows/ci.yml)
+
 Früher Prototyp einer manipulationsgeschützten Kindersicherung für Ubuntu.
 
 ## Firefox- und Chrome-Webfilter
