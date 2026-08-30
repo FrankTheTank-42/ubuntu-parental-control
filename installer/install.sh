@@ -214,9 +214,9 @@ for restricted_uid in "${restricted_uids[@]}"; do
   config_arguments+=(--restricted-uid "$restricted_uid")
 done
 python3 "$PROJECT_ROOT/installer/write_runtime_config.py" "${config_arguments[@]}"
-if [[ ! -f "$ETC_DIR/rules.json" ]]; then
-  install -m 0644 "$PROJECT_ROOT/config/rules.json" "$ETC_DIR/rules.json"
-fi
+python3 "$PROJECT_ROOT/installer/ensure_default_rules.py" \
+  --rules "$ETC_DIR/rules.json" \
+  --defaults "$PROJECT_ROOT/config/rules.json"
 if [[ ! -f "$STATE_DIR/user-domains.json" ]]; then
   printf '{"format_version":1,"users":{}}\n' > "$STATE_DIR/user-domains.json"
   chmod 0600 "$STATE_DIR/user-domains.json"

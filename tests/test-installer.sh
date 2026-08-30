@@ -160,6 +160,33 @@ python3 "$TEST_ROOT/usr/lib/ubuntu-parental-control/rule_validator.py" \
 python3 "$TEST_ROOT/usr/lib/ubuntu-parental-control/upcctl.py" \
   --rules "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" list >/dev/null
 
+# Eine ältere gültige Installation mit leerer Blockliste wird beim Update um
+# den neutralen Standard-Block ergänzt. Andere Profileinstellungen bleiben
+# dabei erhalten.
+python3 - "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+rules = json.loads(path.read_text(encoding="utf-8"))
+rules["profile"]["timezone"] = "UTC"
+rules["blocks"] = []
+path.write_text(json.dumps(rules, indent=2) + "\n", encoding="utf-8")
+PY
+"$PROJECT_ROOT/installer/install.sh" \
+  --root "$TEST_ROOT" \
+  --xpi "$XPI" \
+  --no-start >/dev/null
+python3 - "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    rules = json.load(handle)
+assert rules["profile"]["timezone"] == "UTC"
+assert [block["id"] for block in rules["blocks"]] == ["default-block"]
+assert rules["blocks"][0]["targets"]["domains"] == []
+PY
+
 python3 - \
   "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" \
   "$PROJECT_ROOT/config/rules.example.json" <<'PY'

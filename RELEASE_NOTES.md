@@ -4,6 +4,9 @@
 
 ### Firefox/AMO
 
+- Ergänzt beim erneuten Installieren eine bereits vorhandene, aber leere
+  Blockliste um den neutralen Standard-Block „Webseiten sperren“. Vorhandene
+  Elternregeln und Profileinstellungen bleiben unverändert.
 - Ersetzt die fehleranfällige JSON-Eingabe für Zeitpläne durch einen grafischen
   Wocheneditor. Eltern können mehrere Zeitfenster mit Wochentagen, Start- und
   Endzeit sowie gemeinsamer IANA-Zeitzone verwalten.

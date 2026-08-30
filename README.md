@@ -104,6 +104,9 @@ Eine Neuinstallation enthält bereits die dauerhaft aktive Blockierliste
 „Webseiten sperren“. Sie darf zunächst eine leere Zielmenge besitzen, sodass
 keine Website unbeabsichtigt vorgegeben wird. Das Kinderkonto kann sie sofort
 über die Regelverwaltung und die Kontextmenüs um Domains ergänzen.
+Beim Aktualisieren ergänzt der Installer diesen neutralen Standard-Block auch
+in einer bereits vorhandenen, aber vollständig leeren Blockliste. Bestehende
+Blocks und Profileinstellungen werden nicht verändert.
 
 In einem nicht als eingeschränkt registrierten Konto lassen sich Blocks
 anlegen, bearbeiten und löschen. Jede Speicherung öffnet eine neue
