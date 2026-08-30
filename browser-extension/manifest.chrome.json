@@ -1,10 +1,24 @@
 {
   "manifest_version": 3,
   "name": "Ubuntu Parental Control Webfilter",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Verwaltete Browser-Komponente für Ubuntu Parental Control.",
   "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "64": "icons/icon-64.png",
     "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Ubuntu Parental Control – Regelverwaltung öffnen",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "64": "icons/icon-64.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "permissions": [
     "storage",

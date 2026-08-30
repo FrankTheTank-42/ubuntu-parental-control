@@ -162,6 +162,8 @@ async function main() {
   let dynamicRules = [];
   const createdContextMenus = [];
   const createdTabs = [];
+  const reloadedTabs = [];
+  let optionsPageOpenCount = 0;
   let currentManaged = managed(rules(["example.com"]), publicKeySpki);
   const api = {
     alarms: { create() {}, onAlarm: hook() },
@@ -177,10 +179,12 @@ async function main() {
       create(item) { createdContextMenus.push(item); },
       onClicked: hook(),
     },
+    action: { onClicked: hook() },
     runtime: {
       lastError: null,
       connectNative() { return nativePort; },
       getURL(pathname) { return `moz-extension://test/${pathname}`; },
+      async openOptionsPage() { optionsPageOpenCount += 1; },
       onInstalled: hook(),
       onStartup: hook(),
       onMessage: hook(),
@@ -189,7 +193,25 @@ async function main() {
       managed: { async get() { return currentManaged; } },
       onChanged: hook(),
     },
-    tabs: { async create(options) { createdTabs.push(options); } },
+    tabs: {
+      async create(options) { createdTabs.push(options); },
+      async query(options) {
+        assert.deepEqual(Array.from(options.url), [
+          "*://new-child.example/*",
+          "*://*.new-child.example/*",
+        ]);
+        return [{ id: 71 }, { id: 72 }, { id: 71 }];
+      },
+      async reload(tabId) {
+        assert.ok(
+          dynamicRules.some((rule) =>
+            rule.condition.requestDomains?.includes("new-child.example"),
+          ),
+          "DNR-Regel muss vor dem Neuladen aktiv sein",
+        );
+        reloadedTabs.push(tabId);
+      },
+    },
   };
   const scheduledTimeouts = [];
   const context = vm.createContext({
@@ -211,7 +233,10 @@ async function main() {
   assert.equal(dynamicRules.length, 1);
   assert.equal(dynamicRules[0].condition.requestDomains.join(","), "example.com");
   assert.equal(nativePort.onMessage.listeners.length, 0);
-  assert.equal(createdContextMenus.length, 2);
+  assert.equal(createdContextMenus.length, 3);
+  assert.equal(createdContextMenus[0].id, "upc-open-rule-management");
+  assert.deepEqual(Array.from(createdContextMenus[0].contexts), ["action"]);
+  assert.equal(createdContextMenus[2].icons["16"], "icons/icon-16.png");
 
   const contextMenuClick = api.contextMenus.onClicked.listeners[0];
   contextMenuClick({
@@ -223,6 +248,13 @@ async function main() {
   assert.match(createdTabs[0].url, /context_block=self-blocked-sites/);
   assert.match(createdTabs[0].url, /context_domain=www.example.net/);
   assert.equal(nativePort.onMessage.listeners.length, 0);
+
+  contextMenuClick({ menuItemId: "upc-open-rule-management" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(optionsPageOpenCount, 1);
+  api.action.onClicked.listeners[0]();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(optionsPageOpenCount, 2);
 
   const runtimeMessage = api.runtime.onMessage.listeners[0];
   const uiState = await new Promise((resolve) => {
@@ -249,6 +281,8 @@ async function main() {
   assert.equal(childAddition.ok, true);
   assert.equal(dynamicRules.length, 2);
   assert.equal(dynamicRules[1].condition.requestDomains.join(","), "new-child.example");
+  assert.deepEqual(reloadedTabs, [71, 72]);
+  assert.equal(childAddition.result.reloaded_tabs, 2);
   const rejectedAdminEdit = await new Promise((resolve) => {
     runtimeMessage({ type: "admin_apply", rules: rules([]) }, null, resolve);
   });

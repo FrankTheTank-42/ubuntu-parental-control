@@ -109,6 +109,19 @@ HTTP(S)-Seite, öffnet die Regelverwaltung und verwendet anschließend denselben
 UID-authentifizierten Schreibweg wie die manuelle Domain-Eingabe. Pfad und
 Suchparameter werden nicht in die Regel übernommen.
 
+Nach der bestätigten Aktivierung einer Kinderergänzung fragt die Extension nur
+nach offenen HTTP(S)-Tabs, die genau zur ergänzten Domain oder einer ihrer
+Subdomains gehören, und lädt diese neu. Bereits gerenderte Seiten werden so
+erst nach installierter DNR-Regel erneut angefordert und unmittelbar auf die
+lokale Blockseite umgeleitet. Ein Fehler beim Neuladen eines einzelnen Tabs
+macht die zuvor erfolgreich gespeicherte und aktivierte Regel nicht rückgängig.
+
+Das Manifest definiert außerdem ein gemeinsames Erweiterungssymbol für Firefox
+und Chrome. Ein Klick auf die Browseraktion sowie der Eintrag
+„Regelverwaltung öffnen“ in ihrem Kontextmenü führen zur Optionsseite. Das
+Seiten-Kontextmenü verwendet dasselbe Symbol; Firefox zeigt es zusätzlich an
+den Blockierlisten-Untermenüs.
+
 Nach einer erfolgreichen Polkit-Änderung wartet der Native Host auf eine neue
 Veröffentlichungsnummer des Daemons und die passende Basis- beziehungsweise
 Benutzerregel-Revision. Den dabei erzeugten signierten Snapshot liefert er

@@ -45,11 +45,17 @@ assert.ok(optionsSource.includes('if (childMode && block.action === "block")'));
 assert.ok(backgroundSource.includes("Domain fehlt im bestätigten Regelsnapshot"));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
-  assert.equal(manifest.version, "0.3.6");
+  assert.equal(manifest.version, "0.3.7");
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
   assert.ok(manifest.permissions.includes("contextMenus"));
   assert.ok(manifest.permissions.includes("nativeMessaging"));
   assert.equal(manifest.options_ui.page, "options/options.html");
+  assert.equal(manifest.action.default_title, "Ubuntu Parental Control – Regelverwaltung öffnen");
+  for (const size of [16, 32, 48, 64, 128]) {
+    assert.equal(manifest.icons[String(size)], `icons/icon-${size}.png`);
+    assert.equal(manifest.action.default_icon[String(size)], `icons/icon-${size}.png`);
+    assert.ok(fs.existsSync(path.join(projectRoot, "browser-extension", `icons/icon-${size}.png`)));
+  }
   assert.ok(
     manifest.web_accessible_resources.some((entry) =>
       entry.resources.includes("blocked/blocked.html"),
@@ -81,6 +87,7 @@ function browserApi() {
     },
   };
   return {
+    action: { onClicked: eventHook() },
     alarms: {
       created: [],
       create(name, options) {
@@ -109,6 +116,7 @@ function browserApi() {
       lastError: null,
       nativePort,
       getURL(pathname) { return `moz-extension://test/${pathname}`; },
+      async openOptionsPage() {},
       connectNative(name) {
         assert.equal(name, "ubuntu_parental_control");
         return nativePort;
@@ -125,7 +133,7 @@ function browserApi() {
       },
       onChanged: eventHook(),
     },
-    tabs: { async create() {} },
+    tabs: { async create() {}, async query() { return []; }, async reload() {} },
   };
 }
 
@@ -146,6 +154,7 @@ function contextFor(apiName) {
   assert.equal(api.runtime.onStartup.listeners.length, 1);
   assert.equal(api.alarms.created.length, 1);
   assert.equal(api.contextMenus.onClicked.listeners.length, 1);
+  assert.equal(api.action.onClicked.listeners.length, 1);
   assert.equal(api.runtime.nativePort.onMessage.listeners.length, 0);
 }
 
@@ -159,6 +168,7 @@ function contextFor(apiName) {
   vm.runInContext(backgroundSource, context, { filename: "background/service-worker.js" });
   assert.deepEqual(imports, ["../common/rule-engine.js"]);
   assert.equal(api.runtime.onStartup.listeners.length, 1);
+  assert.equal(api.action.onClicked.listeners.length, 1);
   assert.equal(api.alarms.created.length, 1);
   assert.equal(api.runtime.nativePort.onMessage.listeners.length, 0);
 }

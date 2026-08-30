@@ -264,6 +264,13 @@ Firefox die DNR-Regeln sofort. Ist der Host nicht verfügbar, kann für den
 Managed-Storage-Fallback weiterhin ein vollständiger Browserneustart nötig sein.
 `upcctl` weist nach jeder Änderung der Systemregeldatei darauf hin.
 
+Nach einer Domain-Ergänzung aus einem Kinderkonto aktiviert die Extension
+zuerst den bestätigten signierten Snapshot und lädt danach bereits geöffnete
+Tabs dieser Domain gezielt neu. Dadurch erscheint die Blockseite sowohl bei
+manueller Eingabe als auch beim Hinzufügen über das Seiten-Kontextmenü ohne
+Firefox-Neustart. Das Erweiterungssymbol und dessen Drei-Punkte-Menü öffnen die
+Regelverwaltung direkt.
+
 ### Entfernen
 
 ```bash

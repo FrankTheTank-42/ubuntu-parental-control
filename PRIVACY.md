@@ -1,6 +1,6 @@
 # Datenschutzerklärung für Ubuntu Parental Control Webfilter
 
-Stand: 28. August 2026
+Stand: 30. August 2026
 
 ## Verantwortlicher und Kontakt
 
@@ -35,9 +35,13 @@ keine Cookies und keine persönlichen Kommunikationsinhalte. Nur bei einer
 ausdrücklichen Auswahl von „Aktuelle Website zusätzlich blockieren“ verarbeitet
 sie einmalig die aktuelle HTTP- oder HTTPS-Adresse im Arbeitsspeicher und
 übernimmt ausschließlich deren Hostnamen als neue lokale Filterregel. Pfad,
-Suchparameter und Seiteninhalt werden dabei nicht gespeichert. Den normalen
-Abgleich einer Navigation mit den
-Filterregeln führt Chrome intern über `declarativeNetRequest` aus; die
+Suchparameter und Seiteninhalt werden dabei nicht gespeichert. Nach einer
+solchen ausdrücklichen Ergänzung ermittelt die Erweiterung ausschließlich die
+bereits geöffneten HTTP- und HTTPS-Tabs mit diesem Hostnamen oder einer
+zugehörigen Subdomain und lädt sie neu, damit die neue Sperre sofort greift.
+Andere Tabs werden dabei nicht abgefragt. Den normalen Abgleich einer
+Navigation mit den Filterregeln führt Chrome intern über
+`declarativeNetRequest` aus; die
 aufgerufene URL wird der Erweiterung dabei nicht als Browserverlauf
 übermittelt.
 

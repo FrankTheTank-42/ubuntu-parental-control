@@ -11,6 +11,7 @@ if (typeof globalThis.UPC_RULE_ENGINE === "undefined") {
 }
 
 const api = globalThis.browser ?? globalThis.chrome;
+const isFirefox = typeof globalThis.browser !== "undefined";
 const FAILSAFE_RULESET = "failsafe";
 const FAILSAFE_RULE_ID = 1;
 const REFRESH_ALARM = "refresh-managed-rules";
@@ -19,6 +20,7 @@ const NATIVE_REQUEST_TIMEOUT_MS = 10_000;
 const ADMIN_REQUEST_TIMEOUT_MS = 205_000;
 const CONTEXT_MENU_ROOT = "upc-add-current-domain";
 const CONTEXT_MENU_PREFIX = `${CONTEXT_MENU_ROOT}:`;
+const CONTEXT_MENU_OPEN_OPTIONS = "upc-open-rule-management";
 let updateChain = Promise.resolve();
 let contextMenuChain = Promise.resolve();
 let activeSnapshot = null;
@@ -36,6 +38,11 @@ function rebuildContextMenus(rules) {
     .catch(() => undefined)
     .then(async () => {
       await api.contextMenus.removeAll();
+      api.contextMenus.create({
+        id: CONTEXT_MENU_OPEN_OPTIONS,
+        title: "Regelverwaltung öffnen",
+        contexts: ["action"],
+      });
       const blocking = rules.blocks.filter((block) => block.action === "block");
       if (!blocking.length) return;
       api.contextMenus.create({
@@ -51,12 +58,45 @@ function rebuildContextMenus(rules) {
           title: block.enabled ? block.name : `${block.name} (inaktiv)`,
           contexts: ["page"],
           documentUrlPatterns: ["http://*/*", "https://*/*"],
+          ...(isFirefox ? {
+            icons: {
+              "16": "icons/icon-16.png",
+              "32": "icons/icon-32.png",
+            },
+          } : {}),
         });
       }
     })
     .catch((error) => {
       console.error("Ubuntu Parental Control: Kontextmenü konnte nicht aufgebaut werden", error);
     });
+}
+
+async function reloadDomainTabs(domain) {
+  let tabs;
+  try {
+    tabs = await api.tabs.query({
+      url: [`*://${domain}/*`, `*://*.${domain}/*`],
+    });
+  } catch (error) {
+    console.warn(
+      `Ubuntu Parental Control: offene Tabs für ${domain} konnten nicht ermittelt werden`,
+      error,
+    );
+    return 0;
+  }
+  const tabIds = [...new Set(
+    tabs.map((tab) => tab.id).filter((tabId) => Number.isInteger(tabId)),
+  )];
+  const results = await Promise.allSettled(
+    tabIds.map((tabId) => api.tabs.reload(tabId)),
+  );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.warn("Ubuntu Parental Control: Tab konnte nicht neu geladen werden", result.reason);
+    }
+  }
+  return results.filter((result) => result.status === "fulfilled").length;
 }
 
 async function openContextDomainAddition(info) {
@@ -378,7 +418,10 @@ async function handleUiMessage(message) {
     if (!block?.targets.domains.includes(message.domain)) {
       throw new Error("Domain fehlt im bestätigten Regelsnapshot");
     }
-    return result;
+    return {
+      ...result,
+      reloaded_tabs: await reloadDomainTabs(message.domain),
+    };
   }
   if (message.type === "admin_apply") {
     if (!verifiedNativeStatus || verifiedNativeStatus.restricted) {
@@ -430,8 +473,16 @@ api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 api.contextMenus.onClicked.addListener((info) => {
-  openContextDomainAddition(info).catch((error) => {
+  const action = info.menuItemId === CONTEXT_MENU_OPEN_OPTIONS
+    ? api.runtime.openOptionsPage()
+    : openContextDomainAddition(info);
+  action.catch((error) => {
     console.error("Ubuntu Parental Control: Kontextmenü-Aktion fehlgeschlagen", error);
+  });
+});
+api.action.onClicked.addListener(() => {
+  api.runtime.openOptionsPage().catch((error) => {
+    console.error("Ubuntu Parental Control: Regelverwaltung konnte nicht geöffnet werden", error);
   });
 });
 

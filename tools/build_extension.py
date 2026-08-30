@@ -59,6 +59,13 @@ def main() -> None:
             raise SystemExit(f"{browser}-Manifest enthält contextMenus nicht")
         if manifest.get("options_ui", {}).get("page") != "options/options.html":
             raise SystemExit(f"{browser}-Manifest bindet die Optionsseite nicht ein")
+        expected_icons = {
+            str(size): f"icons/icon-{size}.png" for size in (16, 32, 48, 64, 128)
+        }
+        if manifest.get("icons") != expected_icons:
+            raise SystemExit(f"{browser}-Manifest enthält nicht alle Erweiterungssymbole")
+        if manifest.get("action", {}).get("default_icon") != expected_icons:
+            raise SystemExit(f"{browser}-Manifest enthält nicht alle Aktionssymbole")
     for required in (SOURCE / "options" / "options.html", SOURCE / "options" / "options.js"):
         if not required.is_file():
             raise SystemExit(f"Optionsseiten-Datei fehlt: {required}")

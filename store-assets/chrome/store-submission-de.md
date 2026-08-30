@@ -51,8 +51,12 @@ Die Erweiterung bietet auf HTTP- und HTTPS-Seiten den ausdrücklich ausgelösten
 Menüeintrag „Aktuelle Website zusätzlich blockieren“ an. Nach Auswahl einer
 Blockierliste wird die aktuelle Adresse einmalig im Arbeitsspeicher verarbeitet
 und ausschließlich ihr Hostname als neue lokale Filterregel übernommen. Pfad,
-Suchparameter und Seiteninhalt werden nicht gespeichert oder übertragen. Ohne
-diese Benutzeraktion liest die Erweiterung die aktuelle Seitenadresse nicht.
+Suchparameter und Seiteninhalt werden nicht gespeichert oder übertragen. Nach
+der bestätigten Aktivierung lädt die Erweiterung ausschließlich bereits offene
+Tabs dieser Domain oder ihrer Subdomains neu, damit die Sperre sofort greift.
+Das Kontextmenü am Erweiterungssymbol enthält außerdem einen direkten Einstieg
+in die Regelverwaltung. Ohne diese Benutzeraktionen liest die Erweiterung die
+aktuelle Seitenadresse nicht.
 
 ## Begründung für `declarativeNetRequest`
 

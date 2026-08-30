@@ -1,5 +1,19 @@
 # Versionshinweise
 
+## 0.3.7
+
+### Firefox/AMO
+
+- Lädt bereits geöffnete HTTP- und HTTPS-Tabs der neu ergänzten Domain nach
+  der bestätigten DNR-Aktivierung gezielt neu. Die Sperrseite erscheint damit
+  bei Ergänzungen über die Kinderansicht und das Seiten-Kontextmenü sofort,
+  ohne Firefox neu zu starten.
+- Zeigt das Ubuntu-Parental-Control-Symbol am Erweiterungseintrag und in den
+  Firefox-Kontextmenüs an.
+- Öffnet die Regelverwaltung sowohl mit einem Klick auf das
+  Erweiterungssymbol als auch über den neuen Eintrag „Regelverwaltung öffnen“
+  in dessen Drei-Punkte-Menü.
+
 ## 0.3.6
 
 ### Firefox/AMO
