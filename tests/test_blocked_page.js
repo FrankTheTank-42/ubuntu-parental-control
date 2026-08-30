@@ -14,6 +14,7 @@ async function main() {
   const elements = {
     "#block-source": { hidden: true },
     "#block-source-name": { textContent: "" },
+    "#block-source-priority": { textContent: "" },
   };
   let sentMessage = null;
   const context = vm.createContext({
@@ -21,7 +22,7 @@ async function main() {
       runtime: {
         async sendMessage(message) {
           sentMessage = message;
-          return { ok: true, result: { name: "Soziale Medien" } };
+          return { ok: true, result: { name: "Soziale Medien", priority: 50 } };
         },
       },
     },
@@ -36,6 +37,7 @@ async function main() {
     { type: "get_block_info", block_id: "social-media" },
   );
   assert.equal(elements["#block-source-name"].textContent, "Soziale Medien");
+  assert.equal(elements["#block-source-priority"].textContent, "Priorität 50");
   assert.equal(elements["#block-source"].hidden, false);
   console.log("Blockquellen-Anzeige erfolgreich getestet.");
 }

@@ -109,6 +109,11 @@ getrennt und rootgeschützt in
 `/var/lib/ubuntu-parental-control/user-domains.json` gespeichert und erst im
 signierten effektiven Browser-Snapshot mit den Elternregeln vereinigt.
 
+Domainziele erscheinen in der Detailansicht als eine einzige Liste. Über
+„Domains hinzufügen“ lässt sich bei Bedarf ein Eingabefeld für einzelne oder
+mehrere eingefügte Domains öffnen; die Übernahme bleibt zunächst Teil des
+Entwurfs.
+
 Änderungen in der Elternansicht werden zunächst gemeinsam als lokaler Entwurf
 angezeigt. Das gilt auch für den Profilmodus, die Prioritätsreihenfolge sowie
 neu angelegte oder gelöschte Blocks. Erst „Alles speichern“ übermittelt den

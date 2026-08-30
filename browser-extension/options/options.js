@@ -220,6 +220,16 @@ function lines(value) {
   return value.split("\n").map((item) => item.trim()).filter(Boolean);
 }
 
+function domainLines(value) {
+  const domainPattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+  const domains = [...new Set(lines(value).map((item) => item.toLowerCase()))];
+  const invalid = domains.find((domain) => domain.length > 253 || !domainPattern.test(domain));
+  if (invalid) {
+    throw new Error(`Ungültige Domain „${invalid}“. Bitte ohne Protokoll, Pfad oder Port eingeben.`);
+  }
+  return domains;
+}
+
 function regexLines(items) {
   return items.map((item) => `${item.case_sensitive ? "s" : "i"}:${item.pattern}`).join("\n");
 }
@@ -270,7 +280,7 @@ function setAdminBusy(busy) {
   document.body.setAttribute("aria-busy", String(busy));
   document.querySelector("#busy-overlay").hidden = !busy;
   for (const button of document.querySelectorAll(
-    ".admin-form button, #create-block, #save-all, #discard-draft, .reorder-buttons button, .remove-user-domain",
+    ".admin-form button, #create-block, #save-all, #discard-draft, .reorder-buttons button, .remove-user-domain, .remove-base-domain, .show-domain-add, .domain-add-panel button",
   )) {
     button.disabled = busy || button.dataset.permanentlyDisabled === "true";
   }
@@ -384,7 +394,6 @@ function updateBlockFromForm(form, rules, blockId) {
     throw new Error("Die Priorität muss eine ganze Zahl zwischen -1000 und 1000 sein.");
   }
   edited.priority = priority;
-  edited.targets.domains = lines(form.querySelector(".admin-domains").value);
   edited.targets.url_patterns = lines(form.querySelector(".admin-patterns").value);
   edited.targets.url_regex = parseRegexLines(form.querySelector(".admin-regex").value);
   edited.exceptions.domains = lines(form.querySelector(".admin-exceptions").value);
@@ -404,6 +413,28 @@ function stageOpenDetail() {
   try {
     const { edited, changed } = updateBlockFromForm(form, draftRules, selectedBlockId);
     if (changed) markDraftDirty(`„${edited.name}“ wurde in den Entwurf übernommen.`);
+    return stageOpenDomainPanel();
+  } catch (error) {
+    showMessage(error.message, true);
+    return false;
+  }
+}
+
+function stageOpenDomainPanel() {
+  const panel = document.querySelector("#detail-container .domain-add-panel");
+  if (!panel || panel.hidden) return true;
+  const input = panel.querySelector(".domain-add-input");
+  if (!input.value.trim()) return true;
+  try {
+    const additions = domainLines(input.value);
+    const block = draftRules?.blocks.find((item) => item.id === selectedBlockId);
+    if (!block) throw new Error("Der Block ist im aktuellen Entwurf nicht mehr vorhanden.");
+    const previous = new Set(block.targets.domains);
+    block.targets.domains = [...new Set([...block.targets.domains, ...additions])].sort();
+    const added = block.targets.domains.length - previous.size;
+    input.value = "";
+    if (added) markDraftDirty(`${added} Domain${added === 1 ? "" : "s"} zum Entwurf hinzugefügt.`);
+    else showMessage("Diese Domains sind bereits im Block enthalten.");
     return true;
   } catch (error) {
     showMessage(error.message, true);
@@ -418,7 +449,6 @@ function setupAdminForm(card, block, baseRules, editable, profileTimezone) {
   form.querySelector(".admin-enabled").checked = block.enabled;
   form.querySelector(".admin-action").value = block.action;
   form.querySelector(".admin-priority").value = String(block.priority);
-  form.querySelector(".admin-domains").value = block.targets.domains.join("\n");
   form.querySelector(".admin-patterns").value = block.targets.url_patterns.join("\n");
   form.querySelector(".admin-regex").value = regexLines(block.targets.url_regex);
   form.querySelector(".admin-exceptions").value = block.exceptions.domains.join("\n");
@@ -550,6 +580,23 @@ function renderDomains(card, state, block, baseBlock) {
     const item = document.createElement("span"); item.className = `domain ${base.has(domain) ? "" : "user-added"}`.trim(); item.textContent = domain;
     const ownerUid = base.has(domain) ? null : userDomainOwner(state, block.id, domain);
     if (!base.has(domain)) item.title = child && ownerUid === state.native.status.uid ? "Von dir ergänzt" : `Von eingeschränktem Konto UID ${ownerUid} ergänzt`;
+    if (admin && base.has(domain)) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove-base-domain";
+      remove.textContent = "×";
+      remove.title = `${domain} aus dem Entwurf entfernen`;
+      remove.setAttribute("aria-label", `${domain} entfernen`);
+      remove.addEventListener("click", () => {
+        if (!stageOpenDetail()) return;
+        const draftBlock = draftRules?.blocks.find((entry) => entry.id === block.id);
+        if (!draftBlock) return;
+        draftBlock.targets.domains = draftBlock.targets.domains.filter((entry) => entry !== domain);
+        markDraftDirty(`${domain} wurde im Entwurf aus „${draftBlock.name}“ entfernt.`);
+        renderDetail(currentState);
+      });
+      item.append(remove);
+    }
     if (admin && ownerUid) { const remove = document.createElement("button"); remove.type = "button"; remove.className = "remove-user-domain"; remove.textContent = "×"; remove.title = "Kinderergänzung entfernen"; remove.addEventListener("click", async () => { if (!confirm(`${domain} aus den Ergänzungen von UID ${ownerUid} entfernen?`)) return; try { await runAdminOperation(() => send({ type: "admin_remove_user_domain", uid: ownerUid, block_id: block.id, domain }), `${domain} wurde entfernt.`); } catch (error) { showMessage(error.message, true); } }); item.append(remove); }
     container.append(item);
   }
@@ -573,6 +620,28 @@ function renderDetail(state) {
     }
   }
   renderDomains(card, state, visibleBlock, baseBlock);
+  if (admin && baseBlock) {
+    const showAdd = card.querySelector(".show-domain-add");
+    const panel = card.querySelector(".domain-add-panel");
+    const input = panel.querySelector(".domain-add-input");
+    showAdd.hidden = false;
+    showAdd.addEventListener("click", () => {
+      panel.hidden = false;
+      showAdd.hidden = true;
+      input.focus();
+    });
+    panel.querySelector(".cancel-domain-add").addEventListener("click", () => {
+      input.value = "";
+      panel.hidden = true;
+      showAdd.hidden = false;
+      showAdd.focus();
+    });
+    panel.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!stageOpenDetail()) return;
+      renderDetail(currentState);
+    });
+  }
   const addForm = card.querySelector(".add-domain-form");
   if (child && block.action === "block") { addForm.hidden = false; addForm.addEventListener("submit", async (event) => { event.preventDefault(); const input = addForm.querySelector(".domain-input"); const domain = input.value.trim().toLowerCase(); setAdminBusy(true); try { await send({ type: "add_domain", block_id: block.id, domain }); input.value = ""; showMessage(`${domain} wurde als geschützte Kinderergänzung gespeichert.`); await load(); } catch (error) { showMessage(error.message, true); } finally { setAdminBusy(false); } }); }
   else if (block.action === "block" && (!state.native.connected || !state.native.status)) { const unavailable = card.querySelector(".add-domain-unavailable"); unavailable.hidden = false; unavailable.querySelector(".add-domain-unavailable-detail").textContent = nativeFailure(state.native).detail; }

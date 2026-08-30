@@ -89,6 +89,12 @@ h1 {
   color: #991b1b;
 }
 
+.block-source small {
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .notice {
   margin-top: 32px;
   padding: 20px 22px;
@@ -153,6 +159,10 @@ h1 {
   }
 
   .block-source span {
+    color: #fca5a5;
+  }
+
+  .block-source small {
     color: #fca5a5;
   }
 }

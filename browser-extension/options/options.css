@@ -216,12 +216,25 @@ button.danger { color: #a51d2d; background: #fce8eb; }
 .badge.inactive { color: #77767b; background: #eeeeec; }
 
 .block-meta { margin: 17px 0 10px; color: #625b66; font-size: .9rem; }
+.domain-section { margin-bottom: 20px; }
+.domain-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.domain-heading h3 { margin: 0; font-size: 1rem; }
+.domain-heading button { padding: 7px 11px; font-size: .8rem; }
 .domain-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .domain { padding: 6px 9px; border: 1px solid #deddda; border-radius: 8px; background: #faf9f7; font-size: .84rem; }
 .domain.user-added { border-color: #e5a50a; background: #fff8df; }
-.remove-user-domain { margin: -3px -5px -3px 6px; padding: 1px 5px; border-radius: 6px; color: #a51d2d; background: transparent; }
+.remove-user-domain, .remove-base-domain { margin: -3px -5px -3px 6px; padding: 1px 5px; border-radius: 6px; color: #a51d2d; background: transparent; }
 .remove-user-domain:hover { background: #fce8eb; }
+.remove-base-domain:hover { background: #fce8eb; }
 .empty { color: #77767b; font-style: italic; }
+
+.domain-add-panel { margin-top: 13px; border: 1px solid #deddda; border-radius: 10px; padding: 14px; background: #faf9f7; }
+.domain-add-panel[hidden] { display: none; }
+.domain-add-panel label { display: grid; gap: 6px; font-size: .84rem; font-weight: 750; }
+.domain-add-panel label span { color: #77727b; font-size: .76rem; font-weight: 400; }
+.domain-add-input { width: 100%; border: 1px solid #b8b6b2; border-radius: 9px; padding: 9px 11px; color: inherit; background: #fff; font: inherit; font-family: "Ubuntu Mono", ui-monospace, monospace; resize: vertical; }
+.domain-add-actions { display: flex; gap: 8px; margin-top: 10px; }
+.domain-add-actions button { padding: 8px 12px; font-size: .82rem; }
 
 .add-domain-form { margin-top: 22px; padding-top: 20px; border-top: 1px solid #deddda; }
 .add-domain-form label { display: block; margin-bottom: 10px; font-weight: 750; }
@@ -426,7 +439,9 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   button.secondary { color: #f6f5f4; border-color: #555; background: #363636; }
   .domain { border-color: #555; background: #333; }
   .domain.user-added { border-color: #b58300; background: #4a3b12; }
-  .domain-input, .form-grid input, .form-grid select, .form-grid textarea { color: #f6f5f4; border-color: #666; background: #242424; }
+  .domain-add-panel { border-color: #555; background: #333; }
+  .domain-add-panel label span { color: #c0bfbc; }
+  .domain-add-input, .domain-input, .form-grid input, .form-grid select, .form-grid textarea { color: #f6f5f4; border-color: #666; background: #242424; }
   .mode-child .connection.connected { border-color: #365f91; background: #1d3047; }
   .connection.error .connection-error-detail { color: #ffb4bd; }
   .admin-form.locked { background: #252525; }
@@ -470,6 +485,9 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   .reorder-buttons { grid-column: 3; grid-row: 1 / span 2; flex-direction: column; }
   .block-open { align-items: flex-start; flex-direction: column; }
   .detail-heading { flex-direction: column; }
+  .domain-heading { align-items: flex-start; flex-direction: column; }
+  .domain-heading button, .domain-add-actions button { width: 100%; }
+  .domain-add-actions { flex-direction: column; }
   .draft-bar { position: static; align-items: stretch; flex-direction: column; }
   .draft-actions button { flex: 1; }
 }

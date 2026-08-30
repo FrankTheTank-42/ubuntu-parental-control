@@ -446,7 +446,9 @@ async function handleUiMessage(message) {
     const block = activeSnapshot?.rules.blocks.find(
       (item) => item.id === blockId && item.enabled && item.action === "block",
     );
-    return block ? { id: block.id, name: block.name, kind: "block" } : null;
+    return block
+      ? { id: block.id, name: block.name, priority: block.priority, kind: "block" }
+      : null;
   }
   if (message.type === "get_ui_state") {
     let nativeStatus = null;

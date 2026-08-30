@@ -18,6 +18,11 @@
 - Zeigt auf der lokalen Sperrseite den Namen des expliziten Blocks an, der die
   Navigation ausgelöst hat. Die technische ID wird gegen den aktiven Snapshot
   geprüft; die besuchte URL wird weder übernommen noch gespeichert.
+- Ergänzt die auslösende Blockpriorität auf der Sperrseite als kleine
+  schreibgeschützte Information.
+- Zeigt Domainziele in der Detailansicht nur noch als kompakte Liste. Das Feld
+  „Domains hinzufügen“ wird erst bei Bedarf eingeblendet und nimmt auch direkt
+  eingefügte Mehrfachlisten auf.
 
 ## 0.5.0
 
