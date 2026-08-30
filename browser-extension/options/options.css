@@ -156,20 +156,22 @@ button.danger { color: #a51d2d; background: #fce8eb; }
 .draft-bar p { margin: 3px 0 0; color: #625b66; font-size: .85rem; }
 .draft-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 
-.profile-card {
+.default-rule {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(330px, 1.5fr);
+  grid-template-columns: auto minmax(180px, 1fr) minmax(290px, 1.2fr);
   align-items: center;
-  gap: 18px;
-  margin-bottom: 14px;
-  padding: 20px;
-  border: 1px solid #deddda;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 15px 18px;
+  border: 2px dashed #b8b6b2;
   border-radius: 14px;
-  background: white;
+  background: #faf9f7;
 }
-.profile-card p { margin: 4px 0 0; color: #625b66; font-size: .85rem; }
-.profile-card select { width: 100%; border: 1px solid #b8b6b2; border-radius: 9px; padding: 10px 12px; color: inherit; background: white; }
-.profile-card.locked { filter: grayscale(.4); }
+.default-rule-marker { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; color: white; background: var(--accent); font-weight: 900; }
+.default-rule p { margin: 3px 0 0; color: #625b66; font-size: .82rem; }
+.default-rule label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; font-size: .82rem; font-weight: 750; }
+.default-rule select { width: 100%; border: 1px solid #b8b6b2; border-radius: 9px; padding: 10px 12px; color: inherit; background: white; }
+.default-rule.locked { filter: grayscale(.4); }
 .order-help { margin: 0 0 12px; color: #625b66; font-size: .86rem; }
 .block-row {
   display: grid;
@@ -414,11 +416,12 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   :root { color: #f6f5f4; background: #1e1e1e; }
   .subtitle, .connection p, .block-meta, .default-action, .add-domain-form label span,
   .append-note, .block-id, .schedule-help, .schedule-overnight-note { color: #c0bfbc; }
-  .connection, .summary, .block-card, .block-row, .block-detail, .profile-card { border-color: #4a4a4a; background: #2b2b2b; }
-  .profile-card p, .order-help, .priority-label { color: #c0bfbc; }
+  .connection, .summary, .block-card, .block-row, .block-detail { border-color: #4a4a4a; background: #2b2b2b; }
+  .default-rule { border-color: #666; background: #252525; }
+  .default-rule p, .order-help, .priority-label { color: #c0bfbc; }
   .draft-bar { border-color: #9c6e00; background: #463b1c; }
   .draft-bar p { color: #deddda; }
-  .profile-card select { color: #f6f5f4; border-color: #666; background: #242424; }
+  .default-rule select { color: #f6f5f4; border-color: #666; background: #242424; }
   .summary div, .add-domain-form { border-color: #4a4a4a; }
   button.secondary { color: #f6f5f4; border-color: #555; background: #363636; }
   .domain { border-color: #555; background: #333; }
@@ -460,8 +463,8 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   .schedule-toolbar button { width: 100%; }
   .schedule-days { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .schedule-times input { width: 100%; min-width: 0; }
-  .profile-card { grid-template-columns: 1fr; }
-  .profile-card button { width: 100%; }
+  .default-rule { grid-template-columns: auto minmax(0, 1fr); }
+  .default-rule label { grid-column: 1 / -1; grid-template-columns: 1fr; }
   .block-row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .block-row .priority-label { grid-column: 2; }
   .reorder-buttons { grid-column: 3; grid-row: 1 / span 2; flex-direction: column; }

@@ -530,12 +530,12 @@ function renderOverview(state) {
     });
     blocksElement.append(row);
   }
-  const profile = document.querySelector("#profile-form");
+  const defaultRule = document.querySelector("#default-rule");
   const select = document.querySelector("#default-action");
   select.value = rules.profile.default_action;
   select.disabled = !editable;
-  profile.classList.toggle("locked", !editable);
-  profile.title = child ? "Nur ein Elternkonto kann den Filtermodus ändern." : "";
+  defaultRule.classList.toggle("locked", !editable);
+  defaultRule.title = child ? "Nur ein Elternkonto kann die Abschlussregel ändern." : "";
   document.querySelector("#order-help").textContent = editable
     ? "Höchste Priorität steht oben. Zum Verschieben ziehen oder Alt+Pfeil hoch/runter verwenden."
     : "Höchste Priorität steht oben. Die Reihenfolge ist in dieser Ansicht schreibgeschützt.";
@@ -634,7 +634,7 @@ document.querySelector("#back-to-overview").addEventListener("click", () => {
   showOverview();
   renderBlocks(currentState);
 });
-document.querySelector("#profile-form").addEventListener("submit", (event) => {
+document.querySelector("#default-rule").addEventListener("submit", (event) => {
   event.preventDefault();
 });
 document.querySelector("#default-action").addEventListener("change", (event) => {

@@ -12,6 +12,9 @@
   eingefügt werden.
 - Warnt vor dem Verwerfen eines Entwurfs und validiert offene Detailänderungen,
   bevor gespeichert oder zur Übersicht zurückgekehrt wird.
+- Stellt `profile.default_action` als feste Abschlussregel am Listenende dar:
+  „Alles erlauben“ ist voreingestellt, alternativ kann „Alles blockieren“
+  gewählt werden.
 
 ## 0.5.0
 

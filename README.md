@@ -96,8 +96,9 @@ erste Ansicht zeigt Name, Aktion, Status und Priorität jedes Blocks; die höchs
 Priorität steht oben. Eltern können die Reihenfolge per Drag-and-drop, über
 Auf/Ab-Schaltflächen oder mit `Alt`+`Pfeil hoch/runter` ändern. Ein Klick öffnet
 die Detailansicht für Ziele, Ausnahmen und Zeitfenster. Die Profilwahl erklärt
-zusätzlich den Blocklisten-Betrieb (`default_action: allow`) und den
-Whitelist-Betrieb (`default_action: block`). Die Elternansicht bietet den
+zusätzlich am Listenende die Abschlussregel „Alles erlauben“
+(`default_action: allow`) oder „Alles blockieren“ (`default_action: block`).
+„Alles erlauben“ ist die Voreinstellung. Die Elternansicht bietet den
 vollständigen Editor. In der Kinderansicht bleiben die geschützten Einstellungen
 sichtbar, sind aber klar
 ausgegraut und technisch deaktiviert. Das Kind kann jede Blockierliste um eine
