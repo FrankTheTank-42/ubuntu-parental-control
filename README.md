@@ -395,7 +395,9 @@ Prüfsumme erneut, berechnen Zeitpläne lokal und ersetzen ihre dynamischen
 `declarativeNetRequest`-Regeln atomar. Ein statischer, im Extension-Paket
 enthaltener Notfall-Regelsatz blockiert HTTP(S)-Navigation, solange kein gültiger
 Snapshot aktiv ist. Geblockte Navigationen werden auf eine lokale Hinweisseite
-der Extension umgeleitet; es werden dabei keine URLs gespeichert oder übertragen.
+der Extension umgeleitet. Sie nennt bei einer expliziten Regel den
+verantwortlichen Block anhand seiner gegen den aktiven Snapshot geprüften ID;
+die besuchte URL wird dabei weder gespeichert noch übertragen.
 
 Zusätzlich liefert der rootgeschützte Dienst neue validierte Snapshots über den
 lokalen Native Host. Dadurch aktualisieren Firefox und Chrome die aktiven

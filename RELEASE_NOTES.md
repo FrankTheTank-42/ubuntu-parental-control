@@ -15,6 +15,9 @@
 - Stellt `profile.default_action` als feste Abschlussregel am Listenende dar:
   „Alles erlauben“ ist voreingestellt, alternativ kann „Alles blockieren“
   gewählt werden.
+- Zeigt auf der lokalen Sperrseite den Namen des expliziten Blocks an, der die
+  Navigation ausgelöst hat. Die technische ID wird gegen den aktiven Snapshot
+  geprüft; die besuchte URL wird weder übernommen noch gespeichert.
 
 ## 0.5.0
 

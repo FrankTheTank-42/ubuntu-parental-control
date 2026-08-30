@@ -296,6 +296,16 @@ async function main() {
     Array.from(uiState.result.native.status.can_add_domains_to),
     ["self-blocked-sites"],
   );
+  const blockInfo = await new Promise((resolve) => {
+    runtimeMessage({ type: "get_block_info", block_id: "self-blocked-sites" }, null, resolve);
+  });
+  assert.equal(blockInfo.ok, true);
+  assert.equal(blockInfo.result.name, "Eigene Ablenkungen");
+  const unknownBlockInfo = await new Promise((resolve) => {
+    runtimeMessage({ type: "get_block_info", block_id: "unknown" }, null, resolve);
+  });
+  assert.equal(unknownBlockInfo.ok, true);
+  assert.equal(unknownBlockInfo.result, null);
   const childAddition = await new Promise((resolve) => {
     runtimeMessage({
       type: "add_domain",

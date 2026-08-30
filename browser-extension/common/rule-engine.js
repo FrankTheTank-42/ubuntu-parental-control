@@ -194,7 +194,17 @@ globalThis.UPC_RULE_ENGINE = (() => {
     return condition;
   }
 
-  function compile(rules, now) {
+  function blockedAction(blockId, blockedPageUrl) {
+    const suffix = `?block=${encodeURIComponent(blockId)}`;
+    return {
+      type: "redirect",
+      redirect: blockedPageUrl
+        ? { url: `${blockedPageUrl}${suffix}` }
+        : { extensionPath: `${BLOCKED_PAGE}${suffix}` },
+    };
+  }
+
+  function compile(rules, now, blockedPageUrl = null) {
     validateRules(rules);
     const output = [];
     let id = 1;
@@ -208,7 +218,7 @@ globalThis.UPC_RULE_ENGINE = (() => {
       const excluded = exceptions.domains;
       const action =
         block.action === "block"
-          ? { type: "redirect", redirect: { extensionPath: BLOCKED_PAGE } }
+          ? blockedAction(block.id, blockedPageUrl)
           : { type: "allow" };
       const priority = dnrPriority(block);
       for (const domain of block.targets.domains) {

@@ -73,8 +73,21 @@ const blockTie = compiled.rules.find(
 );
 assert.ok(allowHigh.priority > blockTie.priority);
 assert.ok(blockTie.priority > allowTie.priority);
-assert.equal(blockTie.action.redirect.extensionPath, "/blocked/blocked.html");
+assert.equal(
+  blockTie.action.redirect.extensionPath,
+  "/blocked/blocked.html?block=block-tie",
+);
 assert.deepEqual(blockTie.condition.excludedRequestDomains, ["education.video.example"]);
+
+const absoluteRedirect = engine.compile(
+  rules([block("named-block", 0, "block", matchers(["named.example"]))]),
+  new Date(),
+  "moz-extension://test/blocked/blocked.html",
+).rules[0];
+assert.equal(
+  absoluteRedirect.action.redirect.url,
+  "moz-extension://test/blocked/blocked.html?block=named-block",
+);
 
 const patternRule = engine.compile(
   rules([block("pattern", 0, "block", matchers([], ["*://example.com/Case/*"]))]),

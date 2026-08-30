@@ -227,7 +227,11 @@ async function activateManagedData(managed, reason, source = "managed") {
     );
     return activeSnapshot;
   }
-  const compiled = UPC_RULE_ENGINE.compile(snapshot.rules, new Date());
+  const compiled = UPC_RULE_ENGINE.compile(
+    snapshot.rules,
+    new Date(),
+    api.runtime.getURL("blocked/blocked.html"),
+  );
   await installRules(compiled);
   activeSnapshot = snapshot;
   activeSnapshotSource = source;
@@ -249,7 +253,11 @@ function enqueueNativeActivation(managed, reason) {
 
 async function recompileActiveSnapshot(reason) {
   if (activeSnapshot === null) return refreshRules(reason);
-  const compiled = UPC_RULE_ENGINE.compile(activeSnapshot.rules, new Date());
+  const compiled = UPC_RULE_ENGINE.compile(
+    activeSnapshot.rules,
+    new Date(),
+    api.runtime.getURL("blocked/blocked.html"),
+  );
   await installRules(compiled);
   console.info(
     `Ubuntu Parental Control: ${compiled.rules.length} Regeln neu ausgewertet ` +
@@ -425,6 +433,21 @@ async function verifyNativeStatus(signedStatus, expectedNonce) {
 
 async function handleUiMessage(message) {
   if (!message || typeof message !== "object") throw new Error("Ungültige Anfrage");
+  if (message.type === "get_block_info") {
+    const blockId = message.block_id;
+    if (blockId === null) {
+      return activeSnapshot?.rules.profile.default_action === "block"
+        ? { id: null, name: "Alles blockieren", kind: "default" }
+        : null;
+    }
+    if (typeof blockId !== "string" || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(blockId)) {
+      return null;
+    }
+    const block = activeSnapshot?.rules.blocks.find(
+      (item) => item.id === blockId && item.enabled && item.action === "block",
+    );
+    return block ? { id: block.id, name: block.name, kind: "block" } : null;
+  }
   if (message.type === "get_ui_state") {
     let nativeStatus = null;
     let baseRules = null;

@@ -31,6 +31,14 @@ const optionsSource = fs.readFileSync(
   path.join(projectRoot, "browser-extension/options/options.js"),
   "utf8",
 );
+const blockedHtml = fs.readFileSync(
+  path.join(projectRoot, "browser-extension/blocked/blocked.html"),
+  "utf8",
+);
+const blockedSource = fs.readFileSync(
+  path.join(projectRoot, "browser-extension/blocked/blocked.js"),
+  "utf8",
+);
 
 assert.ok(optionsHtml.includes('id="busy-overlay"'));
 assert.ok(optionsHtml.includes('id="connection-error-detail"'));
@@ -65,6 +73,10 @@ assert.ok(optionsSource.includes('applyAdminRules(structuredClone(draftRules)'))
 assert.ok(optionsSource.includes('targets: { domains: [], url_patterns: [], url_regex: [] }'));
 assert.ok(!optionsSource.includes('prompt("Erste zu blockierende Domain:")'));
 assert.ok(backgroundSource.includes("Domain fehlt im bestätigten Regelsnapshot"));
+assert.ok(backgroundSource.includes('message.type === "get_block_info"'));
+assert.ok(blockedHtml.includes('id="block-source-name"'));
+assert.ok(blockedHtml.includes('<script src="blocked.js"></script>'));
+assert.ok(blockedSource.includes('type: "get_block_info"'));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
   assert.equal(manifest.version, "0.5.1");

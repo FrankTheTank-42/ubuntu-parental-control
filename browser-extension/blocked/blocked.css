@@ -68,6 +68,27 @@ h1 {
   line-height: 1.6;
 }
 
+.block-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 22px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 8px 13px;
+  color: #7f1d1d;
+  background: #fef2f2;
+  font-size: 14px;
+}
+
+.block-source[hidden] {
+  display: none;
+}
+
+.block-source span {
+  color: #991b1b;
+}
+
 .notice {
   margin-top: 32px;
   padding: 20px 22px;
@@ -123,5 +144,15 @@ h1 {
 
   .notice {
     background: #27272a;
+  }
+
+  .block-source {
+    border-color: #7f1d1d;
+    color: #fecaca;
+    background: #3f171b;
+  }
+
+  .block-source span {
+    color: #fca5a5;
   }
 }

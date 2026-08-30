@@ -148,9 +148,12 @@ Blockpriorität erhält `block` eine um eins höhere DNR-Priorität als `allow`.
 Explizite Blockregeln leiten HTTP(S)-Navigation auf die paketierte Seite
 `/blocked/blocked.html` um. Beide Manifeste deklarieren dafür ausschließlich
 HTTP(S)-Hostberechtigungen und veröffentlichen die HTML-Datei als
-`web_accessible_resources`. Die Seite enthält keine externen Ressourcen und
-keinen ausführbaren Code. Sie zeigt nur einen verständlichen Hinweis; besuchte
-URLs werden weder gelesen noch gespeichert oder übertragen.
+`web_accessible_resources`. Der Redirect übergibt ausschließlich die technische
+ID des auslösenden Blocks. Ein lokales Skript fragt dazu den Namen aus dem
+bereits aktiven, verifizierten Snapshot ab und zeigt ihn auf der Blockseite an.
+Unbekannte oder manipulierte IDs werden ignoriert. Die ursprünglich besuchte
+URL wird weder gelesen noch gespeichert oder übertragen; externe Ressourcen
+werden nicht geladen.
 
 Das signierte Extension-Paket enthält einen standardmäßig aktiven statischen
 Regelsatz, der HTTP(S)-Navigation in Haupt- und Unterframes auf dieselbe lokale
