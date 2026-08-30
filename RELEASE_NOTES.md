@@ -1,5 +1,18 @@
 # Versionshinweise
 
+## 0.5.1
+
+### Firefox und Chrome
+
+- Sammelt Elternänderungen als sichtbaren lokalen Entwurf. Profilmodus,
+  Reihenfolge, neue oder gelöschte Blocks und Detailänderungen werden erst mit
+  „Alles speichern“ gemeinsam über eine einzige Polkit-Anmeldung persistiert.
+- Erlaubt neue leere Blocks, ohne beim Anlegen eine erste Domain abzufragen.
+  Umfangreiche Domainlisten können dadurch direkt in die Detailansicht
+  eingefügt werden.
+- Warnt vor dem Verwerfen eines Entwurfs und validiert offene Detailänderungen,
+  bevor gespeichert oder zur Übersicht zurückgekehrt wird.
+
 ## 0.5.0
 
 ### Firefox und Chrome

@@ -12,6 +12,8 @@ let currentState = null;
 let adminBusy = false;
 let selectedBlockId = null;
 let draggedBlockId = null;
+let draftRules = null;
+let draftDirty = false;
 let refreshAfterRepair = false;
 let pendingContextAddition = (() => {
   const parameters = new URLSearchParams(location.search);
@@ -268,7 +270,7 @@ function setAdminBusy(busy) {
   document.body.setAttribute("aria-busy", String(busy));
   document.querySelector("#busy-overlay").hidden = !busy;
   for (const button of document.querySelectorAll(
-    ".admin-form button, #create-block, #save-profile, .reorder-buttons button, .remove-user-domain",
+    ".admin-form button, #create-block, #save-all, #discard-draft, .reorder-buttons button, .remove-user-domain",
   )) {
     button.disabled = busy || button.dataset.permanentlyDisabled === "true";
   }
@@ -327,17 +329,86 @@ async function applyContextDomain(state, addition) {
   if (!state.base_rules) {
     throw new Error("Die administrativen Basisregeln sind nicht verfügbar.");
   }
-  const rules = structuredClone(state.base_rules);
-  const baseBlock = rules.blocks.find((item) => item.id === block.id);
+  const baseBlock = draftRules?.blocks.find((item) => item.id === block.id);
   if (!baseBlock || baseBlock.action !== "block") {
     throw new Error("Die ausgewählte Blockierliste ist administrativ nicht verfügbar.");
   }
   baseBlock.targets.domains.push(addition.domain);
   baseBlock.targets.domains.sort();
-  await applyAdminRules(
-    rules,
-    `${addition.domain} wurde dauerhaft zu „${baseBlock.name}“ hinzugefügt.`,
+  markDraftDirty(`${addition.domain} wurde zum Entwurf von „${baseBlock.name}“ hinzugefügt.`);
+  selectedBlockId = block.id;
+  renderBlocks(state);
+  openDetail(block.id);
+}
+
+function displayedRules(state = currentState) {
+  return modes(state).admin && draftRules ? draftRules : state.rules;
+}
+
+function updateDraftBar() {
+  document.querySelector("#draft-bar").hidden = !draftDirty;
+}
+
+function markDraftDirty(message = "Änderung wurde in den Entwurf übernommen.") {
+  draftDirty = true;
+  updateDraftBar();
+  showMessage(message);
+}
+
+function resetDraft() {
+  draftRules = currentState?.base_rules ? structuredClone(currentState.base_rules) : null;
+  draftDirty = false;
+  updateDraftBar();
+}
+
+function updateBlockFromForm(form, rules, blockId) {
+  const index = rules.blocks.findIndex((item) => item.id === blockId);
+  if (index < 0) throw new Error("Der Block ist im aktuellen Entwurf nicht mehr vorhanden.");
+  const previous = rules.blocks[index];
+  const edited = structuredClone(previous);
+  const newName = form.querySelector(".admin-name").value.trim();
+  if (!newName) throw new Error("Der Block benötigt einen Namen.");
+  const duplicate = rules.blocks.find(
+    (item) => item.id !== blockId
+      && normalizedBlockName(item.name) === normalizedBlockName(newName),
   );
+  if (duplicate) {
+    throw new Error(`Der Name „${duplicate.name}“ wird bereits von Block ${duplicate.id} verwendet.`);
+  }
+  edited.name = newName;
+  edited.enabled = form.querySelector(".admin-enabled").checked;
+  edited.action = form.querySelector(".admin-action").value;
+  edited.user_permissions.add_domains = edited.action === "block";
+  const priority = Number(form.querySelector(".admin-priority").value);
+  if (!Number.isInteger(priority) || priority < -1000 || priority > 1000) {
+    throw new Error("Die Priorität muss eine ganze Zahl zwischen -1000 und 1000 sein.");
+  }
+  edited.priority = priority;
+  edited.targets.domains = lines(form.querySelector(".admin-domains").value);
+  edited.targets.url_patterns = lines(form.querySelector(".admin-patterns").value);
+  edited.targets.url_regex = parseRegexLines(form.querySelector(".admin-regex").value);
+  edited.exceptions.domains = lines(form.querySelector(".admin-exceptions").value);
+  const schedule = readScheduleEditor(form);
+  if (schedule) edited.schedule = schedule;
+  else delete edited.schedule;
+  const changed = JSON.stringify(previous) !== JSON.stringify(edited);
+  if (changed) rules.blocks[index] = edited;
+  return { edited, changed };
+}
+
+function stageOpenDetail() {
+  if (!selectedBlockId || !modes(currentState).admin || !draftRules) return true;
+  const form = document.querySelector("#detail-container .admin-form");
+  if (!form || form.classList.contains("locked")) return true;
+  if (!form.reportValidity()) return false;
+  try {
+    const { edited, changed } = updateBlockFromForm(form, draftRules, selectedBlockId);
+    if (changed) markDraftDirty(`„${edited.name}“ wurde in den Entwurf übernommen.`);
+    return true;
+  } catch (error) {
+    showMessage(error.message, true);
+    return false;
+  }
 }
 
 function setupAdminForm(card, block, baseRules, editable, profileTimezone) {
@@ -365,47 +436,22 @@ function setupAdminForm(card, block, baseRules, editable, profileTimezone) {
     }
     return;
   }
-  form.addEventListener("submit", async (event) => {
+  form.addEventListener("submit", (event) => {
     event.preventDefault();
-    const rules = structuredClone(baseRules);
-    const edited = rules.blocks.find((item) => item.id === block.id);
     try {
-      const newName = form.querySelector(".admin-name").value.trim();
-      const duplicate = rules.blocks.find(
-        (item) => item.id !== block.id
-          && normalizedBlockName(item.name) === normalizedBlockName(newName),
-      );
-      if (duplicate) {
-        throw new Error(
-          `Der Name „${duplicate.name}“ wird bereits von Block ${duplicate.id} verwendet.`,
-        );
-      }
-      edited.name = newName;
-      edited.enabled = form.querySelector(".admin-enabled").checked;
-      edited.action = form.querySelector(".admin-action").value;
-      edited.user_permissions.add_domains = edited.action === "block";
-      edited.priority = Number(form.querySelector(".admin-priority").value);
-      edited.targets.domains = lines(form.querySelector(".admin-domains").value);
-      edited.targets.url_patterns = lines(form.querySelector(".admin-patterns").value);
-      edited.targets.url_regex = parseRegexLines(form.querySelector(".admin-regex").value);
-      edited.exceptions.domains = lines(form.querySelector(".admin-exceptions").value);
-      const schedule = readScheduleEditor(form);
-      if (schedule) edited.schedule = schedule;
-      else delete edited.schedule;
-      await applyAdminRules(rules, `„${edited.name}“ wurde gespeichert.`);
+      const { edited, changed } = updateBlockFromForm(form, baseRules, block.id);
+      if (changed) markDraftDirty(`„${edited.name}“ wurde in den Entwurf übernommen.`);
+      else showMessage("An diesem Block wurden keine Änderungen vorgenommen.");
     } catch (error) {
       showMessage(error.message, true);
     }
   });
-  card.querySelector(".delete-block").addEventListener("click", async () => {
+  card.querySelector(".delete-block").addEventListener("click", () => {
     if (!confirm(`Block „${block.name}“ wirklich löschen?`)) return;
-    const rules = structuredClone(baseRules);
-    rules.blocks = rules.blocks.filter((item) => item.id !== block.id);
-    try {
-      await applyAdminRules(rules, `„${block.name}“ wurde gelöscht.`);
-    } catch (error) {
-      showMessage(error.message, true);
-    }
+    baseRules.blocks = baseRules.blocks.filter((item) => item.id !== block.id);
+    markDraftDirty(`„${block.name}“ wurde im Entwurf gelöscht.`);
+    showOverview();
+    renderBlocks(currentState);
   });
 }
 
@@ -422,15 +468,16 @@ function fillBadges(container, block) {
   );
 }
 
-async function saveOrder(blockId, offset) {
-  if (!modes(currentState).admin || adminBusy) return;
-  const rules = structuredClone(currentState.base_rules);
-  const ordered = moveBlock(rules.blocks, blockId, offset);
+function stageOrder(blockId, offset) {
+  if (!modes(currentState).admin || adminBusy || !draftRules) return;
+  const ordered = moveBlock(draftRules.blocks, blockId, offset);
   prioritiesForOrder(ordered).forEach(({ id, priority }) => {
-    rules.blocks.find((block) => block.id === id).priority = priority;
+    draftRules.blocks.find((block) => block.id === id).priority = priority;
   });
-  rules.blocks = ordered;
-  await applyAdminRules(rules, "Die Block-Reihenfolge wurde gespeichert.");
+  draftRules.blocks = ordered;
+  markDraftDirty("Die neue Block-Reihenfolge ist im Entwurf sichtbar.");
+  renderBlocks(currentState);
+  document.querySelector(`[data-block-id="${CSS.escape(blockId)}"]`)?.focus();
 }
 
 function openDetail(blockId) {
@@ -445,7 +492,7 @@ function openDetail(blockId) {
 function renderOverview(state) {
   const { admin, child } = modes(state);
   const editable = admin && Boolean(state.base_rules);
-  const rules = state.rules;
+  const rules = displayedRules(state);
   blocksElement.replaceChildren();
   for (const [index, block] of sortedBlocks(rules.blocks).entries()) {
     const row = rowTemplate.content.firstElementChild.cloneNode(true);
@@ -465,12 +512,12 @@ function renderOverview(state) {
     }
     up.disabled ||= index === 0;
     down.disabled ||= index === rules.blocks.length - 1;
-    up.addEventListener("click", () => saveOrder(block.id, -1).catch((error) => showMessage(error.message, true)));
-    down.addEventListener("click", () => saveOrder(block.id, 1).catch((error) => showMessage(error.message, true)));
+    up.addEventListener("click", () => stageOrder(block.id, -1));
+    down.addEventListener("click", () => stageOrder(block.id, 1));
     row.addEventListener("keydown", (event) => {
       if (!editable || !event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
       event.preventDefault();
-      saveOrder(block.id, event.key === "ArrowUp" ? -1 : 1).catch((error) => showMessage(error.message, true));
+      stageOrder(block.id, event.key === "ArrowUp" ? -1 : 1);
     });
     row.addEventListener("dragstart", (event) => { draggedBlockId = block.id; row.classList.add("dragging"); event.dataTransfer.effectAllowed = "move"; });
     row.addEventListener("dragend", () => { draggedBlockId = null; row.classList.remove("dragging"); });
@@ -479,7 +526,7 @@ function renderOverview(state) {
     row.addEventListener("drop", (event) => {
       event.preventDefault(); row.classList.remove("drag-target");
       const ordered = sortedBlocks(rules.blocks); const from = ordered.findIndex((item) => item.id === draggedBlockId); const to = ordered.findIndex((item) => item.id === block.id);
-      if (from >= 0 && to >= 0 && from !== to) saveOrder(draggedBlockId, to - from).catch((error) => showMessage(error.message, true));
+      if (from >= 0 && to >= 0 && from !== to) stageOrder(draggedBlockId, to - from);
     });
     blocksElement.append(row);
   }
@@ -487,8 +534,6 @@ function renderOverview(state) {
   const select = document.querySelector("#default-action");
   select.value = rules.profile.default_action;
   select.disabled = !editable;
-  document.querySelector("#save-profile").disabled = !editable;
-  document.querySelector("#save-profile").dataset.permanentlyDisabled = editable ? "false" : "true";
   profile.classList.toggle("locked", !editable);
   profile.title = child ? "Nur ein Elternkonto kann den Filtermodus ändern." : "";
   document.querySelector("#order-help").textContent = editable
@@ -512,17 +557,26 @@ function renderDomains(card, state, block, baseBlock) {
 }
 
 function renderDetail(state) {
-  const block = state.rules.blocks.find((item) => item.id === selectedBlockId);
+  const rules = displayedRules(state);
+  const block = rules.blocks.find((item) => item.id === selectedBlockId);
   if (!block) { selectedBlockId = null; showOverview(); return; }
   const { admin, child } = modes(state);
-  const baseBlock = admin ? state.base_rules?.blocks.find((item) => item.id === block.id) : null;
+  const baseBlock = admin ? draftRules?.blocks.find((item) => item.id === block.id) : null;
   const card = detailTemplate.content.firstElementChild.cloneNode(true);
   card.querySelector(".block-name").textContent = block.name; card.querySelector(".block-id").textContent = `Technische ID: ${block.id}`; fillBadges(card.querySelector(".badges"), block);
-  renderDomains(card, state, block, baseBlock);
+  const visibleBlock = structuredClone(block);
+  if (admin) {
+    for (const userBlocks of Object.values(state.user_domains?.users ?? {})) {
+      for (const domain of userBlocks[block.id] ?? []) {
+        if (!visibleBlock.targets.domains.includes(domain)) visibleBlock.targets.domains.push(domain);
+      }
+    }
+  }
+  renderDomains(card, state, visibleBlock, baseBlock);
   const addForm = card.querySelector(".add-domain-form");
   if (child && block.action === "block") { addForm.hidden = false; addForm.addEventListener("submit", async (event) => { event.preventDefault(); const input = addForm.querySelector(".domain-input"); const domain = input.value.trim().toLowerCase(); setAdminBusy(true); try { await send({ type: "add_domain", block_id: block.id, domain }); input.value = ""; showMessage(`${domain} wurde als geschützte Kinderergänzung gespeichert.`); await load(); } catch (error) { showMessage(error.message, true); } finally { setAdminBusy(false); } }); }
   else if (block.action === "block" && (!state.native.connected || !state.native.status)) { const unavailable = card.querySelector(".add-domain-unavailable"); unavailable.hidden = false; unavailable.querySelector(".add-domain-unavailable-detail").textContent = nativeFailure(state.native).detail; }
-  setupAdminForm(card, baseBlock ?? block, state.base_rules, admin && Boolean(baseBlock), state.rules.profile.timezone);
+  setupAdminForm(card, baseBlock ?? block, draftRules, admin && Boolean(baseBlock), rules.profile.timezone);
   document.querySelector("#detail-container").replaceChildren(card);
 }
 
@@ -539,8 +593,9 @@ function renderBlocks(state) {
   document.body.classList.remove("mode-loading", "mode-parent", "mode-child", "mode-readonly");
   document.body.classList.add(admin ? "mode-parent" : child ? "mode-child" : "mode-readonly");
   if (!state.rules) { showMessage("Es ist noch kein gültiger Regelsnapshot verfügbar.", true); return; }
-  document.querySelector("#block-count").textContent = String(state.rules.blocks.length);
-  document.querySelector("#domain-count").textContent = String(state.rules.blocks.reduce((sum, block) => sum + block.targets.domains.length, 0));
+  const rules = displayedRules(state);
+  document.querySelector("#block-count").textContent = String(rules.blocks.length);
+  document.querySelector("#domain-count").textContent = String(rules.blocks.reduce((sum, block) => sum + block.targets.domains.length, 0));
   document.querySelector("#revision").textContent = state.revision?.slice(0, 10) ?? "–";
   const create = document.querySelector("#create-block"); create.hidden = !(admin || child); create.disabled = child; create.dataset.permanentlyDisabled = child ? "true" : "false"; create.title = child ? "Nur ein Elternkonto kann neue Blocks anlegen." : "";
   renderOverview(state);
@@ -552,6 +607,7 @@ async function load() {
     const state = await send({ type: "get_ui_state" });
     clearStaleError();
     currentState = state;
+    resetDraft();
     renderConnection(state.native);
     renderBlocks(state);
     if (pendingContextAddition) {
@@ -569,20 +625,39 @@ async function load() {
   }
 }
 
-document.querySelector("#refresh").addEventListener("click", load);
-document.querySelector("#back-to-overview").addEventListener("click", showOverview);
-document.querySelector("#profile-form").addEventListener("submit", async (event) => {
+document.querySelector("#refresh").addEventListener("click", () => {
+  if (draftDirty && !confirm("Ungespeicherte Änderungen verwerfen und neu laden?")) return;
+  load();
+});
+document.querySelector("#back-to-overview").addEventListener("click", () => {
+  if (!stageOpenDetail()) return;
+  showOverview();
+  renderBlocks(currentState);
+});
+document.querySelector("#profile-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!modes(currentState).admin || !currentState.base_rules) return;
-  const rules = structuredClone(currentState.base_rules);
-  rules.profile.default_action = document.querySelector("#default-action").value;
+});
+document.querySelector("#default-action").addEventListener("change", (event) => {
+  if (!modes(currentState).admin || !draftRules) return;
+  draftRules.profile.default_action = event.target.value;
+  markDraftDirty(
+    event.target.value === "block"
+      ? "Whitelist-Betrieb ist im Entwurf ausgewählt."
+      : "Blocklisten-Betrieb ist im Entwurf ausgewählt.",
+  );
+});
+document.querySelector("#discard-draft").addEventListener("click", () => {
+  if (!confirm("Alle ungespeicherten Änderungen verwerfen?")) return;
+  resetDraft();
+  selectedBlockId = null;
+  showOverview();
+  renderBlocks(currentState);
+  showMessage("Der Entwurf wurde verworfen.");
+});
+document.querySelector("#save-all").addEventListener("click", async () => {
+  if (!draftRules || !draftDirty || !stageOpenDetail()) return;
   try {
-    await applyAdminRules(
-      rules,
-      rules.profile.default_action === "block"
-        ? "Whitelist-Betrieb wurde aktiviert."
-        : "Blocklisten-Betrieb wurde aktiviert.",
-    );
+    await applyAdminRules(structuredClone(draftRules), "Alle Änderungen wurden gespeichert.");
   } catch (error) {
     showMessage(error.message, true);
   }
@@ -599,14 +674,14 @@ window.addEventListener("focus", () => {
   setTimeout(load, 500);
 });
 document.querySelector("#create-block").addEventListener("click", async () => {
-  if (!currentState?.base_rules) return;
+  if (!draftRules) return;
   const name = prompt(
     "Wie soll der Block heißen?\n\n" +
     "Beispiel: Soziale Medien am Abend\n" +
     "Die benötigte technische ID wird automatisch daraus erzeugt.",
   )?.trim();
   if (!name) return;
-  const duplicate = currentState.base_rules.blocks.find(
+  const duplicate = draftRules.blocks.find(
     (block) => normalizedBlockName(block.name) === normalizedBlockName(name),
   );
   if (duplicate) {
@@ -617,21 +692,22 @@ document.querySelector("#create-block").addEventListener("click", async () => {
     );
     return;
   }
-  const domain = prompt("Erste zu blockierende Domain:")?.trim().toLowerCase();
-  if (!domain) return;
-  const rules = structuredClone(currentState.base_rules);
   let id;
   try {
-    id = blockIdFromName(name, rules.blocks);
+    id = blockIdFromName(name, draftRules.blocks);
   } catch (error) {
     showMessage(error.message, true);
     return;
   }
-  rules.blocks.push({
+  const highestPriority = draftRules.blocks.reduce(
+    (highest, block) => Math.max(highest, block.priority),
+    -1,
+  );
+  draftRules.blocks.push({
     id,
     name,
     enabled: true,
-    priority: 0,
+    priority: Math.min(1000, highestPriority + 1),
     action: "block",
     user_permissions: {
       add_domains: true,
@@ -642,14 +718,17 @@ document.querySelector("#create-block").addEventListener("click", async () => {
       modify_schedule: false,
       disable_block: false,
     },
-    targets: { domains: [domain], url_patterns: [], url_regex: [] },
+    targets: { domains: [], url_patterns: [], url_regex: [] },
     exceptions: { domains: [], url_patterns: [], url_regex: [] },
     limits: null,
   });
-  try {
-    await applyAdminRules(rules, `„${name}“ wurde angelegt.`);
-  } catch (error) {
-    showMessage(error.message, true);
-  }
+  markDraftDirty(`„${name}“ wurde als leerer Block im Entwurf angelegt.`);
+  renderBlocks(currentState);
+  openDetail(id);
+});
+window.addEventListener("beforeunload", (event) => {
+  if (!draftDirty) return;
+  event.preventDefault();
+  event.returnValue = "";
 });
 load();

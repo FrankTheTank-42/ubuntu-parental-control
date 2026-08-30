@@ -41,6 +41,9 @@ assert.ok(optionsHtml.includes('class="schedule-editor wide"'));
 assert.ok(optionsHtml.includes('id="overview-view"'));
 assert.ok(optionsHtml.includes('id="detail-view"'));
 assert.ok(optionsHtml.includes('id="profile-form"'));
+assert.ok(optionsHtml.includes('id="draft-bar"'));
+assert.ok(optionsHtml.includes('id="save-all"'));
+assert.ok(optionsHtml.includes('id="discard-draft"'));
 assert.ok(optionsHtml.includes('draggable="false"'));
 assert.ok(optionsHtml.includes('class="admin-schedule-timezone"'));
 assert.ok(optionsHtml.includes('class="secondary add-window"'));
@@ -55,11 +58,14 @@ assert.ok(optionsSource.includes('if (child && block.action === "block")'));
 assert.ok(optionsSource.includes("scheduleFromDrafts(timezone, drafts)"));
 assert.ok(optionsSource.includes('form.querySelector(".schedule-empty").hidden'));
 assert.ok(optionsSource.includes('event.altKey'));
-assert.ok(optionsSource.includes('rules.profile.default_action ='));
+assert.ok(optionsSource.includes('draftRules.profile.default_action ='));
+assert.ok(optionsSource.includes('applyAdminRules(structuredClone(draftRules)'));
+assert.ok(optionsSource.includes('targets: { domains: [], url_patterns: [], url_regex: [] }'));
+assert.ok(!optionsSource.includes('prompt("Erste zu blockierende Domain:")'));
 assert.ok(backgroundSource.includes("Domain fehlt im bestätigten Regelsnapshot"));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
-  assert.equal(manifest.version, "0.5.0");
+  assert.equal(manifest.version, "0.5.1");
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
   assert.ok(manifest.permissions.includes("contextMenus"));
   assert.ok(manifest.permissions.includes("nativeMessaging"));

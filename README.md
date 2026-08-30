@@ -108,6 +108,14 @@ getrennt und rootgeschützt in
 `/var/lib/ubuntu-parental-control/user-domains.json` gespeichert und erst im
 signierten effektiven Browser-Snapshot mit den Elternregeln vereinigt.
 
+Änderungen in der Elternansicht werden zunächst gemeinsam als lokaler Entwurf
+angezeigt. Das gilt auch für den Profilmodus, die Prioritätsreihenfolge sowie
+neu angelegte oder gelöschte Blocks. Erst „Alles speichern“ übermittelt den
+vollständigen Entwurf und öffnet genau eine Polkit-Administratoranmeldung. Neue
+Blocks dürfen ohne erste Domain angelegt werden, damit Domains, Patterns oder
+Regex-Regeln anschließend gesammelt in der Detailansicht eingefügt werden
+können.
+
 Eine Neuinstallation enthält bereits die dauerhaft aktive Blockierliste
 „Webseiten sperren“. Sie darf zunächst eine leere Zielmenge besitzen, sodass
 keine Website unbeabsichtigt vorgegeben wird. Das Kinderkonto kann sie sofort
