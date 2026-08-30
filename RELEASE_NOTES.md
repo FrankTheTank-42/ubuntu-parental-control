@@ -1,5 +1,16 @@
 # Versionshinweise
 
+## 0.4.0
+
+### Firefox/AMO
+
+- Ersetzt die fehleranfällige JSON-Eingabe für Zeitpläne durch einen grafischen
+  Wocheneditor. Eltern können mehrere Zeitfenster mit Wochentagen, Start- und
+  Endzeit sowie gemeinsamer IANA-Zeitzone verwalten.
+- Zeigt vorhandene Zeitfenster in der Kinderansicht vollständig, aber
+  ausgegraut und technisch deaktiviert. Ohne Fenster bleibt ein Block
+  durchgehend aktiv; Fenster über Mitternacht enden weiterhin am Folgetag.
+
 ## 0.3.9
 
 ### Firefox/AMO

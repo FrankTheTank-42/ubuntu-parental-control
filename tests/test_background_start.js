@@ -37,15 +37,22 @@ assert.ok(optionsHtml.includes('id="connection-error-detail"'));
 assert.ok(optionsHtml.includes('id="repair-native"'));
 assert.ok(optionsHtml.includes('ubuntu-parental-control://firefox-consent/allow'));
 assert.ok(optionsHtml.includes('class="add-domain-unavailable"'));
+assert.ok(optionsHtml.includes('class="schedule-editor wide"'));
+assert.ok(optionsHtml.includes('class="admin-schedule-timezone"'));
+assert.ok(optionsHtml.includes('class="secondary add-window"'));
+assert.ok(optionsHtml.includes('<script src="schedule-model.js"></script>'));
+assert.ok(!optionsHtml.includes('class="admin-schedule"'));
 assert.ok(!optionsHtml.includes("admin-child-add"));
 assert.ok(optionsSource.includes('form.classList.add("locked")'));
 assert.ok(optionsSource.includes('document.body.classList.add(adminMode ? "mode-parent"'));
 assert.ok(optionsSource.includes('title: "Native Host nicht erreichbar"'));
 assert.ok(optionsSource.includes('if (childMode && block.action === "block")'));
+assert.ok(optionsSource.includes("scheduleFromDrafts(timezone, drafts)"));
+assert.ok(optionsSource.includes('form.querySelector(".schedule-empty").hidden'));
 assert.ok(backgroundSource.includes("Domain fehlt im bestätigten Regelsnapshot"));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
-  assert.equal(manifest.version, "0.3.9");
+  assert.equal(manifest.version, "0.4.0");
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
   assert.ok(manifest.permissions.includes("contextMenus"));
   assert.ok(manifest.permissions.includes("nativeMessaging"));

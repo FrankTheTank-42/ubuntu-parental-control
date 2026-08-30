@@ -5,6 +5,7 @@ const isFirefox = typeof globalThis.browser !== "undefined";
 const blocksElement = document.querySelector("#blocks");
 const template = document.querySelector("#block-template");
 const messageElement = document.querySelector("#message");
+const { WEEKDAYS, parseRrule, scheduleFromDrafts } = globalThis.UPC_SCHEDULE_MODEL;
 let currentState = null;
 let adminBusy = false;
 let refreshAfterRepair = false;
@@ -113,6 +114,100 @@ function scheduleText(block) {
   if (!block.schedule) return "durchgehend aktiv";
   const count = block.schedule.windows.length;
   return `${count} Zeitfenster · ${block.schedule.timezone}`;
+}
+
+function updateScheduleRows(form) {
+  const rows = [...form.querySelectorAll(".schedule-window")];
+  rows.forEach((row, index) => {
+    row.querySelector(".schedule-window-title").textContent = `Zeitfenster ${index + 1}`;
+  });
+  form.querySelector(".schedule-empty").hidden = rows.length > 0;
+  form.querySelector(".schedule-overnight-note").hidden = rows.length === 0;
+}
+
+function addScheduleWindowRow(form, window = null) {
+  const selectedDays = window
+    ? parseRrule(window.rrule)
+    : new Set(["MO", "TU", "WE", "TH", "FR"]);
+  const row = document.createElement("section");
+  row.className = "schedule-window";
+
+  const heading = document.createElement("div");
+  heading.className = "schedule-window-heading";
+  const title = document.createElement("strong");
+  title.className = "schedule-window-title";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "secondary remove-window";
+  remove.textContent = "Entfernen";
+  remove.addEventListener("click", () => {
+    row.remove();
+    updateScheduleRows(form);
+  });
+  heading.append(title, remove);
+
+  const days = document.createElement("div");
+  days.className = "schedule-days";
+  days.setAttribute("aria-label", "Wochentage");
+  for (const [code, label] of WEEKDAYS) {
+    const day = document.createElement("label");
+    day.className = "schedule-day";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.dataset.day = code;
+    checkbox.checked = selectedDays.has(code);
+    const text = document.createElement("span");
+    text.textContent = label;
+    day.append(checkbox, text);
+    days.append(day);
+  }
+
+  const times = document.createElement("div");
+  times.className = "schedule-times";
+  for (const [className, label, value] of [
+    ["schedule-start", "Von", window?.start ?? "18:00"],
+    ["schedule-end", "Bis", window?.end ?? "20:00"],
+  ]) {
+    const timeLabel = document.createElement("label");
+    timeLabel.textContent = label;
+    const input = document.createElement("input");
+    input.className = className;
+    input.type = "time";
+    input.step = "60";
+    input.required = true;
+    input.value = value;
+    timeLabel.append(input);
+    times.append(timeLabel);
+  }
+
+  row.append(heading, days, times);
+  form.querySelector(".schedule-windows").append(row);
+  updateScheduleRows(form);
+}
+
+function setupScheduleEditor(form, schedule, profileTimezone) {
+  const timezone = form.querySelector(".admin-schedule-timezone");
+  timezone.value = schedule?.timezone ?? profileTimezone ?? "Europe/Berlin";
+  const windows = form.querySelector(".schedule-windows");
+  windows.replaceChildren();
+  for (const window of schedule?.windows ?? []) addScheduleWindowRow(form, window);
+  form.querySelector(".add-window").addEventListener("click", () => {
+    addScheduleWindowRow(form);
+  });
+  updateScheduleRows(form);
+}
+
+function readScheduleEditor(form) {
+  const rows = [...form.querySelectorAll(".schedule-window")];
+  const timezone = form.querySelector(".admin-schedule-timezone").value.trim();
+  const drafts = rows.map((row) => ({
+    days: WEEKDAYS
+      .filter(([code]) => row.querySelector(`input[data-day="${code}"]`).checked)
+      .map(([code]) => code),
+    start: row.querySelector(".schedule-start").value,
+    end: row.querySelector(".schedule-end").value,
+  }));
+  return scheduleFromDrafts(timezone, drafts);
 }
 
 function lines(value) {
@@ -241,7 +336,7 @@ async function applyContextDomain(state, addition) {
   );
 }
 
-function setupAdminForm(card, block, baseRules, editable) {
+function setupAdminForm(card, block, baseRules, editable, profileTimezone) {
   const form = card.querySelector(".admin-form");
   form.hidden = false;
   form.querySelector(".admin-name").value = block.name;
@@ -252,9 +347,7 @@ function setupAdminForm(card, block, baseRules, editable) {
   form.querySelector(".admin-patterns").value = block.targets.url_patterns.join("\n");
   form.querySelector(".admin-regex").value = regexLines(block.targets.url_regex);
   form.querySelector(".admin-exceptions").value = block.exceptions.domains.join("\n");
-  form.querySelector(".admin-schedule").value = block.schedule
-    ? JSON.stringify(block.schedule, null, 2)
-    : "";
+  setupScheduleEditor(form, block.schedule, profileTimezone);
   if (!editable) {
     form.classList.add("locked");
     form.querySelector(".admin-title strong").textContent = "Nur für Eltern bearbeitbar";
@@ -292,8 +385,8 @@ function setupAdminForm(card, block, baseRules, editable) {
       edited.targets.url_patterns = lines(form.querySelector(".admin-patterns").value);
       edited.targets.url_regex = parseRegexLines(form.querySelector(".admin-regex").value);
       edited.exceptions.domains = lines(form.querySelector(".admin-exceptions").value);
-      const schedule = form.querySelector(".admin-schedule").value.trim();
-      if (schedule) edited.schedule = JSON.parse(schedule);
+      const schedule = readScheduleEditor(form);
+      if (schedule) edited.schedule = schedule;
       else delete edited.schedule;
       await applyAdminRules(rules, `„${edited.name}“ wurde gespeichert.`);
     } catch (error) {
@@ -436,9 +529,9 @@ function renderBlocks(state) {
       }
     }
     if (adminMode && state.base_rules && baseBlock) {
-      setupAdminForm(card, baseBlock, state.base_rules, true);
+      setupAdminForm(card, baseBlock, state.base_rules, true, rules.profile.timezone);
     } else if (childMode) {
-      setupAdminForm(card, block, null, false);
+      setupAdminForm(card, block, null, false, rules.profile.timezone);
     }
     blocksElement.append(card);
   }

@@ -66,7 +66,11 @@ def main() -> None:
             raise SystemExit(f"{browser}-Manifest enthält nicht alle Erweiterungssymbole")
         if manifest.get("action", {}).get("default_icon") != expected_icons:
             raise SystemExit(f"{browser}-Manifest enthält nicht alle Aktionssymbole")
-    for required in (SOURCE / "options" / "options.html", SOURCE / "options" / "options.js"):
+    for required in (
+        SOURCE / "options" / "options.html",
+        SOURCE / "options" / "schedule-model.js",
+        SOURCE / "options" / "options.js",
+    ):
         if not required.is_file():
             raise SystemExit(f"Optionsseiten-Datei fehlt: {required}")
     build_archive(FIREFOX_OUTPUT, firefox_manifest)

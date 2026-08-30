@@ -29,7 +29,7 @@ body.mode-readonly {
   --accent-soft: #eeeeec;
 }
 
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 
 .app-header, .section-heading, .block-heading, .input-row, .admin-title, .admin-buttons, .section-actions {
   display: flex;
@@ -76,7 +76,10 @@ button {
 }
 
 button:hover { background: var(--accent-hover); }
-button:focus-visible, input:focus-visible { outline: 3px solid #3584e4; outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid #3584e4;
+  outline-offset: 2px;
+}
 button:disabled { opacity: .55; cursor: not-allowed; }
 body.saving button:disabled { cursor: progress; }
 button.secondary { color: #3d3846; background: white; border: 1px solid #deddda; }
@@ -195,6 +198,82 @@ button.danger { color: #a51d2d; background: #fce8eb; }
 .form-grid textarea { resize: vertical; font-family: "Ubuntu Mono", ui-monospace, monospace; }
 .admin-buttons { justify-content: flex-start; margin-top: 16px; }
 
+.schedule-editor {
+  min-width: 0;
+  margin: 4px 0 0;
+  border: 1px solid #deddda;
+  border-radius: 12px;
+  padding: 16px;
+}
+.schedule-editor legend { padding: 0 7px; font-size: .9rem; font-weight: 800; }
+.schedule-help, .schedule-overnight-note {
+  margin: 0;
+  color: #77727b;
+  font-size: .8rem;
+  font-weight: 400;
+}
+.schedule-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+}
+.schedule-toolbar label { flex: 1; }
+.schedule-toolbar button { flex: 0 0 auto; }
+.schedule-empty {
+  margin-top: 14px;
+  border: 1px dashed #c8c6c3;
+  border-radius: 9px;
+  padding: 13px 14px;
+  color: #77767b;
+  background: #faf9f7;
+  font-size: .82rem;
+  font-style: italic;
+}
+.schedule-empty[hidden], .schedule-overnight-note[hidden] { display: none; }
+.schedule-windows { display: grid; gap: 11px; margin-top: 14px; }
+.schedule-window {
+  border: 1px solid #deddda;
+  border-radius: 10px;
+  padding: 13px;
+  background: #faf9f7;
+}
+.schedule-window-heading, .schedule-times {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.schedule-window-heading { margin-bottom: 12px; }
+.schedule-window-heading strong { font-size: .84rem; }
+.remove-window { padding: 6px 10px; color: #a51d2d; font-size: .76rem; }
+.schedule-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.schedule-day { display: block !important; cursor: pointer; }
+.schedule-day input { position: absolute; opacity: 0; pointer-events: none; }
+.schedule-day span {
+  display: block !important;
+  margin: 0 !important;
+  border: 1px solid #c8c6c3;
+  border-radius: 8px;
+  padding: 7px 5px;
+  color: #5e5c64 !important;
+  background: white;
+  font-size: .78rem !important;
+  font-weight: 700 !important;
+  text-align: center;
+}
+.schedule-day input:checked + span {
+  border-color: var(--accent);
+  color: var(--accent) !important;
+  background: var(--accent-soft);
+}
+.schedule-day input:focus-visible + span { outline: 3px solid #3584e4; outline-offset: 2px; }
+.schedule-times { justify-content: flex-start; margin-top: 12px; }
+.schedule-times label { display: flex; align-items: center; gap: 8px; }
+.schedule-times input { width: auto; min-width: 125px; }
+.schedule-overnight-note { margin-top: 11px; }
+
 .admin-form.locked {
   margin-right: -10px;
   margin-left: -10px;
@@ -211,6 +290,19 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   border-color: #c8c6c3;
   background: #e9e8e7;
   opacity: 1;
+}
+.admin-form.locked .schedule-editor { border-color: #c8c6c3; }
+.admin-form.locked .schedule-window, .admin-form.locked .schedule-empty { background: #e9e8e7; }
+.admin-form.locked .schedule-day { cursor: default; }
+.admin-form.locked .schedule-day span {
+  color: #77767b !important;
+  border-color: #c8c6c3;
+  background: #e9e8e7;
+}
+.admin-form.locked .schedule-day input:checked + span {
+  color: #5e5c64 !important;
+  border-color: #9a9996;
+  background: #deddda;
 }
 .admin-form.locked .admin-buttons button { color: #77767b; background: #deddda; }
 
@@ -259,7 +351,8 @@ button.danger { color: #a51d2d; background: #fce8eb; }
 
 @media (prefers-color-scheme: dark) {
   :root { color: #f6f5f4; background: #1e1e1e; }
-  .subtitle, .connection p, .block-meta, .default-action, .add-domain-form label span, .append-note, .block-id { color: #c0bfbc; }
+  .subtitle, .connection p, .block-meta, .default-action, .add-domain-form label span,
+  .append-note, .block-id, .schedule-help, .schedule-overnight-note { color: #c0bfbc; }
   .connection, .summary, .block-card { border-color: #4a4a4a; background: #2b2b2b; }
   .summary div, .add-domain-form { border-color: #4a4a4a; }
   button.secondary { color: #f6f5f4; border-color: #555; background: #363636; }
@@ -275,6 +368,13 @@ button.danger { color: #a51d2d; background: #fce8eb; }
     border-color: #4a4a4a;
     background: #303030;
   }
+  .schedule-editor, .schedule-window { border-color: #555; }
+  .schedule-window, .schedule-empty { background: #333; }
+  .schedule-day span { color: #c0bfbc !important; border-color: #666; background: #242424; }
+  .admin-form.locked .schedule-editor { border-color: #4a4a4a; }
+  .admin-form.locked .schedule-window, .admin-form.locked .schedule-empty { background: #303030; }
+  .admin-form.locked .schedule-day span { color: #9a9996 !important; border-color: #4a4a4a; background: #303030; }
+  .admin-form.locked .schedule-day input:checked + span { color: #c0bfbc !important; background: #3a3a3a; }
   .busy-card { border-color: #555; background: #2b2b2b; }
   .busy-card p { color: #c0bfbc; }
   .add-domain-unavailable { color: #ffb4bd; border-color: #8f3b49; background: #491d25; }
@@ -291,4 +391,8 @@ button.danger { color: #a51d2d; background: #fce8eb; }
   .form-grid { grid-template-columns: 1fr; }
   .form-grid .wide { grid-column: auto; }
   .switches { justify-items: start; }
+  .schedule-toolbar, .schedule-times { align-items: stretch; flex-direction: column; }
+  .schedule-toolbar button { width: 100%; }
+  .schedule-days { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .schedule-times input { width: 100%; min-width: 0; }
 }

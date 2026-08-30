@@ -53,6 +53,11 @@
       </section>
     </main>
 
+    <datalist id="timezone-suggestions">
+      <option value="Europe/Berlin"></option>
+      <option value="UTC"></option>
+    </datalist>
+
     <div id="busy-overlay" class="busy-overlay" hidden role="status" aria-live="assertive">
       <div class="busy-card">
         <span class="spinner" aria-hidden="true"></span>
@@ -109,7 +114,27 @@
             <label class="wide">URL-Patterns <span>Ein Pattern pro Zeile</span><textarea class="admin-patterns" rows="3"></textarea></label>
             <label class="wide">URL-Regex <span><code>i:</code> oder <code>s:</code> voranstellen</span><textarea class="admin-regex" rows="3"></textarea></label>
             <label class="wide">Domain-Ausnahmen <span>Eine Domain pro Zeile</span><textarea class="admin-exceptions" rows="3"></textarea></label>
-            <label class="wide">Zeitplan <span>JSON-Objekt oder leer für durchgehend</span><textarea class="admin-schedule" rows="5"></textarea></label>
+            <fieldset class="schedule-editor wide">
+              <legend>Zeitfenster</legend>
+              <p class="schedule-help">
+                Der Block ist nur innerhalb der eingetragenen Zeitfenster aktiv.
+                Ohne Zeitfenster gilt er durchgehend.
+              </p>
+              <div class="schedule-toolbar">
+                <label>
+                  Zeitzone
+                  <span>IANA-Zeitzone für alle Fenster dieses Blocks</span>
+                  <input class="admin-schedule-timezone" type="text"
+                    list="timezone-suggestions" maxlength="64" required>
+                </label>
+                <button class="secondary add-window" type="button">Zeitfenster hinzufügen</button>
+              </div>
+              <div class="schedule-empty">Keine Zeitfenster – der Block ist durchgehend aktiv.</div>
+              <div class="schedule-windows"></div>
+              <p class="schedule-overnight-note">
+                Liegt die Endzeit vor oder gleich der Startzeit, endet das Fenster am Folgetag.
+              </p>
+            </fieldset>
           </div>
           <div class="admin-buttons">
             <button type="submit">Block speichern</button>
@@ -119,6 +144,7 @@
       </article>
     </template>
 
+    <script src="schedule-model.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

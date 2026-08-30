@@ -109,9 +109,14 @@ In einem nicht als eingeschränkt registrierten Konto lassen sich Blocks
 anlegen, bearbeiten und löschen. Jede Speicherung öffnet eine neue
 Polkit-Administratoranmeldung; es wird bewusst keine Autorisierung für spätere
 Änderungen zwischengespeichert. Die Oberfläche kann Name, Aktivierung, Aktion,
-Priorität, Domainziele, URL-Patterns, URL-Regex, Domain-Ausnahmen und Zeitplan
-bearbeiten. Während einer Speicherung zeigt die Oberfläche eine Warteanzeige,
-bis der Verwaltungsdienst den neuen Browser-Snapshot bestätigt hat.
+Priorität, Domainziele, URL-Patterns, URL-Regex und Domain-Ausnahmen bearbeiten.
+Zeitpläne werden ohne JSON-Eingabe über einen Wocheneditor verwaltet: Für jeden
+Block lassen sich mehrere Kombinationen aus Wochentagen, Start- und Endzeit
+sowie eine gemeinsame IANA-Zeitzone festlegen. Liegt die Endzeit vor oder
+gleich der Startzeit, läuft das Fenster bis zum Folgetag. Ohne Zeitfenster ist
+der Block durchgehend aktiv. Während einer Speicherung zeigt die Oberfläche
+eine Warteanzeige, bis der Verwaltungsdienst den neuen Browser-Snapshot
+bestätigt hat.
 
 Native Messaging transportiert nur lokale Regelsnapshots und
 Verwaltungsanfragen. Die verbindliche Start- und Rückfallebene bleibt
@@ -315,6 +320,7 @@ Die Tests laufen ohne Root-Rechte in einem temporären Installationsziel:
 ./tests/test-installer.sh
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 node tests/test_rule_engine.js
+node tests/test_schedule_model.js
 node tests/test_background_start.js
 node tests/test_native_live_update.js
 ```
