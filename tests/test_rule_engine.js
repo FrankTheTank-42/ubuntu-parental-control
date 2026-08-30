@@ -82,6 +82,13 @@ const patternRule = engine.compile(
 ).rules[0];
 assert.equal(patternRule.condition.isUrlFilterCaseSensitive, true);
 
+const preparedBlocklist = engine.compile(
+  rules([block("prepared", 0, "block", matchers())]),
+  new Date(),
+);
+assert.deepEqual(preparedBlocklist.rules, []);
+assert.equal(preparedBlocklist.defaultAction, "allow");
+
 const sameNameBlocks = [
   { ...block("streaming", 0, "block", matchers(["one.example"])), name: "Streaming" },
   { ...block("streaming-2", 0, "block", matchers(["two.example"])), name: "Streaming" },

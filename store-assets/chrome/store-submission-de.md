@@ -55,8 +55,9 @@ Suchparameter und Seiteninhalt werden nicht gespeichert oder übertragen. Nach
 der bestätigten Aktivierung lädt die Erweiterung ausschließlich bereits offene
 Tabs dieser Domain oder ihrer Subdomains neu, damit die Sperre sofort greift.
 Das Kontextmenü am Erweiterungssymbol enthält außerdem einen direkten Einstieg
-in die Regelverwaltung. Ohne diese Benutzeraktionen liest die Erweiterung die
-aktuelle Seitenadresse nicht.
+in die Regelverwaltung sowie „Webseite zu Block hinzufügen“ mit den
+verfügbaren Blockierlisten als Untermenü. Ohne diese Benutzeraktionen liest die
+Erweiterung die aktuelle Seitenadresse nicht.
 
 ## Begründung für `declarativeNetRequest`
 

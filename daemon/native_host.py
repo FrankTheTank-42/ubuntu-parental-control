@@ -209,22 +209,54 @@ def load_snapshot(path: Path) -> dict[str, Any]:
     return value
 
 
+def snapshot_revision(value: dict[str, Any]) -> str:
+    revision = value.get("revision")
+    if not isinstance(revision, str) or len(revision) != 64:
+        raise ValueError("Live-Snapshot enthält keine gültige Revision")
+    try:
+        int(revision, 16)
+    except ValueError as exc:
+        raise ValueError("Live-Snapshot enthält keine gültige Revision") from exc
+    return revision
+
+
+def response_snapshot_revision(response: dict[str, Any]) -> str | None:
+    if response.get("ok") is not True:
+        return None
+    result = response.get("result")
+    managed = result.get("managed") if isinstance(result, dict) else None
+    if not isinstance(managed, dict):
+        return None
+    return snapshot_revision(managed)
+
+
+def snapshot_event(
+    managed: dict[str, Any], last_delivered_revision: str | None
+) -> tuple[str, dict[str, Any] | None]:
+    revision = snapshot_revision(managed)
+    if revision == last_delivered_revision:
+        return revision, None
+    return revision, {"event": "snapshot", "managed": managed}
+
+
 def main() -> int:
     snapshot_path = configured_path("--snapshot", DEFAULT_SNAPSHOT)
     socket_path = configured_path("--socket", DEFAULT_SOCKET)
     input_stream = sys.stdin.buffer
     output_stream = sys.stdout.buffer
     last_signature: tuple[int, int, int] | None = None
+    last_delivered_revision: str | None = None
 
     write_native_message(output_stream, {"event": "native_status", "connected": True})
     while True:
         signature = snapshot_signature(snapshot_path)
         if signature is not None and signature != last_signature:
             try:
-                write_native_message(
-                    output_stream,
-                    {"event": "snapshot", "managed": load_snapshot(snapshot_path)},
-                )
+                managed = load_snapshot(snapshot_path)
+                revision, event = snapshot_event(managed, last_delivered_revision)
+                if event is not None:
+                    write_native_message(output_stream, event)
+                last_delivered_revision = revision
                 last_signature = signature
             except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
                 write_native_message(
@@ -245,8 +277,6 @@ def main() -> int:
                     "id": request.get("id"),
                     **request_admin(request, snapshot_path, socket_path),
                 }
-                if response.get("ok") is True:
-                    last_signature = snapshot_signature(snapshot_path)
             else:
                 response = request_control(socket_path, request)
         except (
@@ -262,6 +292,15 @@ def main() -> int:
                 "error": str(exc),
             }
         write_native_message(output_stream, response)
+        try:
+            delivered_revision = response_snapshot_revision(response)
+            if delivered_revision is not None:
+                last_delivered_revision = delivered_revision
+        except ValueError as exc:
+            write_native_message(
+                output_stream,
+                {"event": "native_error", "error": f"Befehls-Snapshot abgelehnt: {exc}"},
+            )
         time.sleep(0)
 
 

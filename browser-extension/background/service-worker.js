@@ -21,9 +21,12 @@ const ADMIN_REQUEST_TIMEOUT_MS = 205_000;
 const CONTEXT_MENU_ROOT = "upc-add-current-domain";
 const CONTEXT_MENU_PREFIX = `${CONTEXT_MENU_ROOT}:`;
 const CONTEXT_MENU_OPEN_OPTIONS = "upc-open-rule-management";
+const ACTION_MENU_ADD_ROOT = "upc-action-add-current-domain";
+const ACTION_MENU_ADD_PREFIX = `${ACTION_MENU_ADD_ROOT}:`;
 let updateChain = Promise.resolve();
 let contextMenuChain = Promise.resolve();
 let activeSnapshot = null;
+let activeSnapshotSource = null;
 let trustedLivePublicKey = null;
 let nativePort = null;
 let nativeConnected = false;
@@ -51,19 +54,33 @@ function rebuildContextMenus(rules) {
         contexts: ["page"],
         documentUrlPatterns: ["http://*/*", "https://*/*"],
       });
+      api.contextMenus.create({
+        id: ACTION_MENU_ADD_ROOT,
+        title: "Webseite zu Block hinzufügen",
+        contexts: ["action"],
+      });
       for (const block of blocking) {
-        api.contextMenus.create({
-          id: `${CONTEXT_MENU_PREFIX}${block.id}`,
-          parentId: CONTEXT_MENU_ROOT,
+        const commonChildProperties = {
           title: block.enabled ? block.name : `${block.name} (inaktiv)`,
-          contexts: ["page"],
-          documentUrlPatterns: ["http://*/*", "https://*/*"],
           ...(isFirefox ? {
             icons: {
               "16": "icons/icon-16.png",
               "32": "icons/icon-32.png",
             },
           } : {}),
+        };
+        api.contextMenus.create({
+          ...commonChildProperties,
+          id: `${CONTEXT_MENU_PREFIX}${block.id}`,
+          parentId: CONTEXT_MENU_ROOT,
+          contexts: ["page"],
+          documentUrlPatterns: ["http://*/*", "https://*/*"],
+        });
+        api.contextMenus.create({
+          ...commonChildProperties,
+          id: `${ACTION_MENU_ADD_PREFIX}${block.id}`,
+          parentId: ACTION_MENU_ADD_ROOT,
+          contexts: ["action"],
         });
       }
     })
@@ -89,7 +106,7 @@ async function reloadDomainTabs(domain) {
     tabs.map((tab) => tab.id).filter((tabId) => Number.isInteger(tabId)),
   )];
   const results = await Promise.allSettled(
-    tabIds.map((tabId) => api.tabs.reload(tabId)),
+    tabIds.map((tabId) => api.tabs.reload(tabId, { bypassCache: true })),
   );
   for (const result of results) {
     if (result.status === "rejected") {
@@ -99,15 +116,22 @@ async function reloadDomainTabs(domain) {
   return results.filter((result) => result.status === "fulfilled").length;
 }
 
-async function openContextDomainAddition(info) {
-  if (
-    typeof info?.menuItemId !== "string"
-    || !info.menuItemId.startsWith(CONTEXT_MENU_PREFIX)
-  ) return;
-  const blockId = info.menuItemId.slice(CONTEXT_MENU_PREFIX.length);
+async function openContextDomainAddition(info, tab) {
+  if (typeof info?.menuItemId !== "string") return;
+  let blockId;
+  let sourceUrl;
+  if (info.menuItemId.startsWith(CONTEXT_MENU_PREFIX)) {
+    blockId = info.menuItemId.slice(CONTEXT_MENU_PREFIX.length);
+    sourceUrl = info.pageUrl;
+  } else if (info.menuItemId.startsWith(ACTION_MENU_ADD_PREFIX)) {
+    blockId = info.menuItemId.slice(ACTION_MENU_ADD_PREFIX.length);
+    sourceUrl = tab?.url;
+  } else {
+    return;
+  }
   let page;
   try {
-    page = new URL(info.pageUrl);
+    page = new URL(sourceUrl);
   } catch (_error) {
     return;
   }
@@ -190,15 +214,37 @@ async function activateManagedData(managed, reason, source = "managed") {
       managed.live_public_key_spki,
     );
   }
+  if (activeSnapshot?.revision === snapshot.revision) {
+    // A native write is intentionally returned both as the direct command
+    // response and as a live file event. Treat the second delivery as an
+    // acknowledgement instead of trying to register identical DNR rule IDs
+    // again. A native confirmation upgrades a managed startup snapshot to the
+    // live source without changing its already installed rules.
+    if (source === "native") activeSnapshotSource = "native";
+    console.info(
+      `Ubuntu Parental Control: Revision ${snapshot.revision.slice(0, 12)} bereits aktiv ` +
+        `(Grund ${reason})`,
+    );
+    return activeSnapshot;
+  }
   const compiled = UPC_RULE_ENGINE.compile(snapshot.rules, new Date());
   await installRules(compiled);
   activeSnapshot = snapshot;
+  activeSnapshotSource = source;
   rebuildContextMenus(snapshot.rules);
   console.info(
     `Ubuntu Parental Control: ${compiled.rules.length} Regeln aktiviert ` +
       `(Revision ${snapshot.revision.slice(0, 12)}, Grund ${reason})`,
   );
   return snapshot;
+}
+
+function enqueueNativeActivation(managed, reason) {
+  const activation = updateChain
+    .catch(() => undefined)
+    .then(() => activateManagedData(managed, reason, "native"));
+  updateChain = activation;
+  return activation;
 }
 
 async function recompileActiveSnapshot(reason) {
@@ -224,12 +270,28 @@ function enqueueScheduleRecompile(reason) {
 }
 
 async function refreshRules(reason) {
+  if (reason === "managed-policy-change" && activeSnapshotSource === "native") {
+    console.info(
+      "Ubuntu Parental Control: verspätete Managed-Policy-Änderung ignoriert; " +
+        "verifizierter Native Snapshot bleibt aktiv",
+    );
+    return activeSnapshot;
+  }
   const managed = await api.storage.managed.get([
     "protocol_version",
     "revision",
     "snapshot_json",
     "live_public_key_spki",
   ]);
+  // The managed-storage read can complete after a native activation that was
+  // queued later. Re-check the source here to prevent that older read from
+  // replacing the live snapshot.
+  if (reason === "managed-policy-change" && activeSnapshotSource === "native") {
+    console.info(
+      "Ubuntu Parental Control: veralteten Managed-Policy-Stand nach Native-Aktivierung verworfen",
+    );
+    return activeSnapshot;
+  }
   return activateManagedData(managed, reason);
 }
 
@@ -413,7 +475,7 @@ async function handleUiMessage(message) {
     if (!result.managed) {
       throw new Error("Native Host hat keinen bestätigten Regelsnapshot zurückgegeben");
     }
-    const snapshot = await activateManagedData(result.managed, "user-domain-added", "native");
+    const snapshot = await enqueueNativeActivation(result.managed, "user-domain-added");
     const block = snapshot.rules.blocks.find((item) => item.id === message.block_id);
     if (!block?.targets.domains.includes(message.domain)) {
       throw new Error("Domain fehlt im bestätigten Regelsnapshot");
@@ -432,7 +494,7 @@ async function handleUiMessage(message) {
       ADMIN_REQUEST_TIMEOUT_MS,
     );
     if (result.managed) {
-      await activateManagedData(result.managed, "administrator-rules-applied", "native");
+      await enqueueNativeActivation(result.managed, "administrator-rules-applied");
     }
     return result;
   }
@@ -450,7 +512,7 @@ async function handleUiMessage(message) {
       ADMIN_REQUEST_TIMEOUT_MS,
     );
     if (result.managed) {
-      await activateManagedData(result.managed, "administrator-user-domain-removed", "native");
+      await enqueueNativeActivation(result.managed, "administrator-user-domain-removed");
     }
     return result;
   }
@@ -472,10 +534,10 @@ api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   );
   return true;
 });
-api.contextMenus.onClicked.addListener((info) => {
+api.contextMenus.onClicked.addListener((info, tab) => {
   const action = info.menuItemId === CONTEXT_MENU_OPEN_OPTIONS
     ? api.runtime.openOptionsPage()
-    : openContextDomainAddition(info);
+    : openContextDomainAddition(info, tab);
   action.catch((error) => {
     console.error("Ubuntu Parental Control: Kontextmenü-Aktion fehlgeschlagen", error);
   });

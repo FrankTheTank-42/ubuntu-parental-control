@@ -45,7 +45,7 @@ assert.ok(optionsSource.includes('if (childMode && block.action === "block")'));
 assert.ok(backgroundSource.includes("Domain fehlt im bestätigten Regelsnapshot"));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
-  assert.equal(manifest.version, "0.3.7");
+  assert.equal(manifest.version, "0.3.9");
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
   assert.ok(manifest.permissions.includes("contextMenus"));
   assert.ok(manifest.permissions.includes("nativeMessaging"));

@@ -21,7 +21,14 @@ sys.path.insert(0, str(PROJECT_ROOT / "daemon"))
 from control_server import ControlServer  # noqa: E402
 from admin_helper import apply_request  # noqa: E402
 from managed_policy import ManagedPolicyPublisher  # noqa: E402
-from native_host import read_native_message, wait_for_publication, write_native_message  # noqa: E402
+from native_host import (  # noqa: E402
+    read_native_message,
+    response_snapshot_revision,
+    snapshot_event,
+    snapshot_revision,
+    wait_for_publication,
+    write_native_message,
+)
 from rule_validator import load_rules  # noqa: E402
 from upcctl import CommandError  # noqa: E402
 from user_rules import (  # noqa: E402
@@ -166,6 +173,35 @@ class UserRulesTest(unittest.TestCase):
         write_native_message(stream, message)
         stream.seek(0)
         self.assertEqual(message, read_native_message(stream))
+
+    def test_native_response_marks_direct_snapshot_revision_as_delivered(self) -> None:
+        revision = "a" * 64
+        response = {
+            "id": "request-1",
+            "ok": True,
+            "result": {"managed": {"revision": revision}},
+        }
+        self.assertEqual(revision, response_snapshot_revision(response))
+        self.assertIsNone(response_snapshot_revision({"ok": False, "error": "abgelehnt"}))
+        self.assertIsNone(response_snapshot_revision({"ok": True, "result": {}}))
+        self.assertEqual(revision, snapshot_revision({"revision": revision}))
+        with self.assertRaises(ValueError):
+            response_snapshot_revision({
+                "ok": True,
+                "result": {"managed": {"revision": "keine-pruefsumme"}},
+            })
+
+    def test_native_watcher_suppresses_only_the_directly_delivered_revision(self) -> None:
+        delivered = "a" * 64
+        same = {"revision": delivered, "snapshot_json": "same"}
+        revision, event = snapshot_event(same, delivered)
+        self.assertEqual(delivered, revision)
+        self.assertIsNone(event)
+
+        newer = {"revision": "b" * 64, "snapshot_json": "newer"}
+        revision, event = snapshot_event(newer, delivered)
+        self.assertEqual("b" * 64, revision)
+        self.assertEqual({"event": "snapshot", "managed": newer}, event)
 
     def test_admin_waits_for_matching_daemon_publication(self) -> None:
         expected_snapshot = {"protocol_version": 1, "live_signature": "signed"}

@@ -25,15 +25,16 @@ für diesen Zweck erforderlichen Daten:
   Ausnahmen, Prioritäten und Zeitpläne;
 - Domains, die ein eingeschränktes Konto bewusst zu einer Blockierliste
   hinzufügt, einschließlich des Hostnamens der aktuellen Seite, wenn die
-  Person ausdrücklich den entsprechenden Kontextmenüeintrag auswählt;
+Person ausdrücklich einen der entsprechenden Kontextmenüeinträge auswählt;
 - technische Prüfsummen, Revisionsnummern, Signaturen und zufällige Nonces zur
   Integritäts- und Authentizitätsprüfung lokaler Regelnachrichten.
 
 Die Erweiterung überwacht, protokolliert oder speichert insbesondere keine
 Browserhistorie, keine Seiteninhalte, keine Formulareingaben, keine Passwörter,
 keine Cookies und keine persönlichen Kommunikationsinhalte. Nur bei einer
-ausdrücklichen Auswahl von „Aktuelle Website zusätzlich blockieren“ verarbeitet
-sie einmalig die aktuelle HTTP- oder HTTPS-Adresse im Arbeitsspeicher und
+ausdrücklichen Auswahl von „Aktuelle Website zusätzlich blockieren“ oder
+„Webseite zu Block hinzufügen“ verarbeitet sie einmalig die aktuelle HTTP-
+oder HTTPS-Adresse im Arbeitsspeicher und
 übernimmt ausschließlich deren Hostnamen als neue lokale Filterregel. Pfad,
 Suchparameter und Seiteninhalt werden dabei nicht gespeichert. Nach einer
 solchen ausdrücklichen Ergänzung ermittelt die Erweiterung ausschließlich die

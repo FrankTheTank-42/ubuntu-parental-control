@@ -10,6 +10,7 @@ chrome_extension_id=""
 chrome_update_url="https://clients2.google.com/service/update2/crx"
 start_service=true
 restricted_uids=()
+restricted_users_explicit=false
 
 usage() {
   echo "Verwendung: sudo $0 --xpi PFAD [--restricted-user BENUTZER] [--chrome-extension-id ID] [--chrome-update-url URL] [--root TESTZIEL] [--no-start]"
@@ -49,6 +50,7 @@ while (($#)); do
       restricted_uid="$(id -u -- "$2" 2>/dev/null)" || die "Ubuntu-Benutzerkonto nicht gefunden: $2"
       [[ "$restricted_uid" =~ ^[0-9]+$ && "$restricted_uid" -gt 0 ]] || die "ungültige UID für eingeschränktes Konto: $2"
       restricted_uids+=("$restricted_uid")
+      restricted_users_explicit=true
       shift 2
       ;;
     --no-start)
@@ -81,6 +83,26 @@ fi
 
 if [[ "$root_prefix" == "/" && ${EUID} -ne 0 ]]; then
   die "die Systeminstallation muss als root laufen"
+fi
+
+if [[ "$restricted_users_explicit" == false ]]; then
+  detection_arguments=(--root "$root_prefix")
+  if [[ "${SUDO_UID:-}" =~ ^[0-9]+$ && "${SUDO_UID}" -gt 0 ]]; then
+    detection_arguments+=(--exclude-uid "$SUDO_UID")
+  fi
+  detected_users="$(
+    python3 "$PROJECT_ROOT/installer/detect_restricted_users.py" "${detection_arguments[@]}"
+  )" || die "Ubuntu-Benutzerkonten konnten nicht automatisch erkannt werden"
+  if [[ -n "$detected_users" ]]; then
+    while IFS=: read -r detected_uid detected_name; do
+      [[ "$detected_uid" =~ ^[0-9]+$ && -n "$detected_name" ]] \
+        || die "ungültiges Ergebnis der automatischen Benutzererkennung"
+      restricted_uids+=("$detected_uid")
+      echo "Eingeschränktes Konto automatisch erkannt: $detected_name (UID $detected_uid)"
+    done <<< "$detected_users"
+  else
+    echo "Hinweis: Kein interaktives Nicht-Administratorkonto automatisch erkannt."
+  fi
 fi
 
 python3 - "$xpi_path" "$EXTENSION_ID" <<'PY'

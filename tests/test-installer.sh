@@ -10,11 +10,35 @@ python3 "$PROJECT_ROOT/tools/build_extension.py" >/dev/null
 readonly XPI="$PROJECT_ROOT/dist/ubuntu-parental-control-webfilter-firefox-unsigned.xpi"
 readonly POLICY="$TEST_ROOT/etc/firefox/policies/policies.json"
 readonly CHROME_ID="abcdefghijklmnopabcdefghijklmnop"
-readonly RESTRICTED_USER="$(id -un)"
-readonly RESTRICTED_UID="$(id -u)"
+readonly RESTRICTED_UID="2001"
 readonly CHROME_POLICY="$TEST_ROOT/etc/opt/chrome/policies/managed/ubuntu-parental-control.json"
 
+write_account_fixture() {
+  local target_root="$1"
+  mkdir -p "$target_root/etc"
+  cat > "$target_root/etc/passwd" <<'EOF'
+root:x:0:0:root:/root:/bin/bash
+parent:x:2000:2000:Parent:/home/parent:/bin/bash
+child:x:2001:2001:Child:/home/child:/bin/bash
+service:x:2002:2002:Service:/var/lib/service:/usr/sbin/nologin
+otheradmin:x:2003:2003:Other Admin:/home/otheradmin:/bin/bash
+EOF
+  cat > "$target_root/etc/group" <<'EOF'
+root:x:0:
+sudo:x:27:parent,otheradmin
+parent:x:2000:
+child:x:2001:
+service:x:2002:
+otheradmin:x:2003:
+EOF
+  cat > "$target_root/etc/login.defs" <<'EOF'
+UID_MIN 1000
+UID_MAX 60000
+EOF
+}
+
 mkdir -p "$(dirname "$POLICY")"
+write_account_fixture "$TEST_ROOT"
 cat > "$POLICY" <<'JSON'
 {
   "policies": {
@@ -27,7 +51,6 @@ cp "$POLICY" "$TEST_ROOT/original-policy.json"
 "$PROJECT_ROOT/installer/install.sh" \
   --root "$TEST_ROOT" \
   --xpi "$XPI" \
-  --restricted-user "$RESTRICTED_USER" \
   --chrome-extension-id "$CHROME_ID" \
   --no-start >/dev/null
 
@@ -76,6 +99,21 @@ grep -Fqx 'Exec=/usr/bin/upc-firefox-consent --from-uri %u' \
 grep -Fqx 'MimeType=x-scheme-handler/ubuntu-parental-control;' \
   "$TEST_ROOT/usr/share/applications/ubuntu-parental-control-firefox-consent.desktop"
 test -f "$TEST_ROOT/etc/ubuntu-parental-control/rules.json"
+python3 - "$TEST_ROOT/etc/ubuntu-parental-control/rules.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    rules = json.load(handle)
+assert len(rules["blocks"]) == 1
+block = rules["blocks"][0]
+assert block["id"] == "default-block"
+assert block["name"] == "Webseiten sperren"
+assert block["enabled"] is True
+assert block["action"] == "block"
+assert block["user_permissions"]["add_domains"] is True
+assert block["targets"] == {"domains": [], "url_patterns": [], "url_regex": []}
+assert "schedule" not in block
+PY
 test -d "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history"
 test "$(stat -c '%a' "$TEST_ROOT/var/lib/ubuntu-parental-control/rule-history")" = "700"
 test -f "$TEST_ROOT/var/lib/ubuntu-parental-control/user-domains.json"
@@ -249,6 +287,7 @@ test ! -e "$TEST_ROOT/usr/share/polkit-1/actions/local.ubuntu-parental-control.p
 test ! -e "$CHROME_POLICY"
 
 readonly EMPTY_ROOT="$TEST_ROOT/without-original-policy"
+write_account_fixture "$EMPTY_ROOT"
 "$PROJECT_ROOT/installer/install.sh" --root "$EMPTY_ROOT" --xpi "$XPI" --no-start >/dev/null
 "$PROJECT_ROOT/installer/uninstall.sh" --root "$EMPTY_ROOT" --no-stop --prepare-only >/dev/null
 test -f "$EMPTY_ROOT/etc/firefox/policies/policies.json"
@@ -259,6 +298,7 @@ test ! -e "$EMPTY_ROOT/etc/firefox/policies/policies.json"
 
 readonly EXISTING_CHROME_ROOT="$TEST_ROOT/existing-chrome-policy"
 readonly EXISTING_CHROME_POLICY="$EXISTING_CHROME_ROOT/etc/opt/chrome/policies/managed/ubuntu-parental-control.json"
+write_account_fixture "$EXISTING_CHROME_ROOT"
 mkdir -p "$(dirname "$EXISTING_CHROME_POLICY")"
 printf '{"HomepageLocation":"https://school.example/"}\n' > "$EXISTING_CHROME_POLICY"
 cp "$EXISTING_CHROME_POLICY" "$EXISTING_CHROME_ROOT/original-chrome-policy.json"
@@ -276,6 +316,7 @@ printf '\n' | "$PROJECT_ROOT/installer/uninstall.sh" \
 cmp "$EXISTING_CHROME_POLICY" "$EXISTING_CHROME_ROOT/original-chrome-policy.json"
 
 readonly ONE_COMMAND_ROOT="$TEST_ROOT/one-command"
+write_account_fixture "$ONE_COMMAND_ROOT"
 "$PROJECT_ROOT/installer/install.sh" --root "$ONE_COMMAND_ROOT" --xpi "$XPI" --no-start >/dev/null
 printf '\n\n' | "$PROJECT_ROOT/installer/uninstall.sh" --root "$ONE_COMMAND_ROOT" --no-stop >/dev/null
 test ! -e "$ONE_COMMAND_ROOT/etc/firefox/policies/policies.json"

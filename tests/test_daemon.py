@@ -49,7 +49,7 @@ class RuleStoreTest(unittest.TestCase):
             store = RuleStore(source, last_good)
             original = copy.deepcopy(store.start())
             invalid = copy.deepcopy(self.example)
-            invalid["blocks"][0]["targets"] = {"domains": [], "url_patterns": [], "url_regex": []}
+            invalid["blocks"][0]["targets"]["domains"] = ["https://example.com"]
             self.write(source, invalid)
             self.assertFalse(store.reload_if_changed())
             self.assertEqual(original, store.active)

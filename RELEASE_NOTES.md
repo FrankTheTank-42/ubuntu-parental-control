@@ -1,5 +1,53 @@
 # Versionshinweise
 
+## 0.3.9
+
+### Firefox/AMO
+
+- Liefert bei einer Neuinstallation die aktive Standard-Blockierliste
+  „Webseiten sperren“ mit aus. Dadurch stehen dem Kinderkonto die
+  Domain-Eingabe und beide Kontextmenüs sofort zur Verfügung, auch wenn noch
+  keine Elternregeln angelegt wurden.
+- Erlaubt vorbereitete Blocks mit einer leeren Zielmenge im Regelschema und im
+  Validator. Der Browser erzeugt dafür keine DNR-Regel, bis die erste Domain,
+  das erste URL-Pattern oder die erste Regex ergänzt wird.
+- Erkennt bei der Installation interaktive Ubuntu-Konten ohne
+  Administratorrechte automatisch als eingeschränkte Konten. Der Name des
+  Kinderkontos muss nicht mehr zwingend mit `--restricted-user` angegeben
+  werden; die Option bleibt als expliziter Override für besondere
+  Mehrbenutzerkonfigurationen erhalten.
+
+- Erkennt doppelt zugestellte Native Snapshots anhand ihrer bereits geprüften
+  Revision. Die direkte Antwort einer Domain-Ergänzung und das unmittelbar
+  folgende Live-Event bestätigen nun denselben Stand, ohne identische
+  DNR-Regel-IDs ein zweites Mal zu registrieren.
+- Markiert der Native Host eine bereits direkt beantwortete Snapshot-Revision
+  pro Browser-Verbindung als zugestellt. Sein Dateiwächter unterdrückt nur das
+  identische Folge-Event; wirklich neuere Revisionen und andere
+  Browser-Verbindungen werden weiterhin benachrichtigt.
+- Verhindert dadurch die rote Firefox-Fehlermeldung „Doppelte ID“, wenn über
+  das Kontextmenü nacheinander weitere Domains ergänzt werden.
+- Ergänzt im Drei-Punkte-Menü des Erweiterungssymbols den Eintrag „Webseite zu
+  Block hinzufügen“. Ein Untermenü zeigt die verfügbaren Blockierlisten an.
+- Übernimmt nach der Blockauswahl ausschließlich den Hostnamen des aktuellen
+  HTTP(S)-Tabs und verwendet denselben bestätigten Speicherweg wie das
+  bestehende Seiten-Kontextmenü und die manuelle Domain-Eingabe.
+
+## 0.3.8
+
+### Firefox/AMO
+
+- Verhindert, dass ein verspätetes Firefox-`storage.managed`-Ereignis einen
+  bereits verifizierten Native-Live-Snapshot wieder durch den älteren
+  Policy-Cache ersetzt. Eine neu ergänzte Domain bleibt dadurch in der
+  Regelverwaltung sichtbar und dauerhaft aktiv.
+- Serialisiert direkte Speicherantworten, Native-Live-Ereignisse und
+  Zeitplanauswertungen über dieselbe Aktivierungswarteschlange. Parallel
+  eintreffende Snapshots können die zuletzt bestätigte Änderung nicht mehr
+  überholen.
+- Lädt passende offene Tabs nach der Aktivierung unter Umgehung des
+  Firefox-Caches neu.
+
 ## 0.3.7
 
 ### Firefox/AMO

@@ -5,5 +5,33 @@
     "default_action": "allow",
     "conflict_policy": "priority_then_deny"
   },
-  "blocks": []
+  "blocks": [
+    {
+      "id": "default-block",
+      "name": "Webseiten sperren",
+      "enabled": true,
+      "priority": 0,
+      "action": "block",
+      "user_permissions": {
+        "add_domains": true,
+        "remove_domains": false,
+        "add_url_patterns": false,
+        "add_url_regex": false,
+        "modify_exceptions": false,
+        "modify_schedule": false,
+        "disable_block": false
+      },
+      "targets": {
+        "domains": [],
+        "url_patterns": [],
+        "url_regex": []
+      },
+      "exceptions": {
+        "domains": [],
+        "url_patterns": [],
+        "url_regex": []
+      },
+      "limits": null
+    }
+  ]
 }

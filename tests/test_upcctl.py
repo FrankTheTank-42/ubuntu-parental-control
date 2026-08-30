@@ -57,11 +57,7 @@ class UpcctlTest(unittest.TestCase):
             self.write(target, self.example)
             original = copy.deepcopy(self.example)
             invalid = copy.deepcopy(self.example)
-            invalid["blocks"][0]["targets"] = {
-                "domains": [],
-                "url_patterns": [],
-                "url_regex": [],
-            }
+            invalid["blocks"][0]["targets"]["domains"] = ["https://example.com"]
             self.write(source, invalid)
             with self.assertRaises(CommandError):
                 command_apply(target, source)

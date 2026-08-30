@@ -159,7 +159,7 @@ class RuleValidator:
         self.validate_permissions(
             block.get("user_permissions"), block.get("action"), f"{path}.user_permissions"
         )
-        self.validate_matchers(block.get("targets"), f"{path}.targets", require_nonempty=True)
+        self.validate_matchers(block.get("targets"), f"{path}.targets")
         self.validate_matchers(block.get("exceptions"), f"{path}.exceptions")
         if "schedule" in block:
             self.validate_schedule(block["schedule"], f"{path}.schedule")
@@ -187,12 +187,11 @@ class RuleValidator:
         if permissions.get("add_domains") is True and action != "block":
             self.error(f"{path}.add_domains", "ist nur bei action 'block' erlaubt")
 
-    def validate_matchers(self, value: Any, path: str, require_nonempty: bool = False) -> None:
+    def validate_matchers(self, value: Any, path: str) -> None:
         fields = ("domains", "url_patterns", "url_regex")
         matchers = self.object(value, path, fields, fields)
         if matchers is None:
             return
-        total = 0
         validators = (
             ("domains", 10000, self.validate_domain),
             ("url_patterns", 1000, self.validate_url_pattern),
@@ -204,7 +203,6 @@ class RuleValidator:
             if not isinstance(items, list):
                 self.error(item_path, "muss eine Liste sein")
                 continue
-            total += len(items)
             if len(items) > maximum:
                 self.error(item_path, f"darf höchstens {maximum} Einträge enthalten")
             seen: set[str] = set()
@@ -214,9 +212,6 @@ class RuleValidator:
                     self.error(f"{item_path}[{index}]", "doppelter Eintrag")
                 seen.add(marker)
                 validator(item, f"{item_path}[{index}]")
-        if require_nonempty and total == 0:
-            self.error(path, "muss mindestens ein Ziel enthalten")
-
     def validate_domain(self, value: Any, path: str) -> None:
         if not isinstance(value, str) or not (3 <= len(value) <= 253) or not DOMAIN_RE.fullmatch(value):
             self.error(path, "muss eine kleingeschriebene ASCII-Domain ohne Schema, Port oder Pfad sein")

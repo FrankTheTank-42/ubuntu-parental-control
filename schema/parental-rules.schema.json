@@ -93,7 +93,8 @@
           "$ref": "#/$defs/userPermissions"
         },
         "targets": {
-          "$ref": "#/$defs/nonEmptyMatchers"
+          "$ref": "#/$defs/matchers",
+          "description": "May be empty so a prepared block list can receive its first target later."
         },
         "exceptions": {
           "$ref": "#/$defs/matchers"
@@ -211,38 +212,6 @@
           }
         }
       }
-    },
-    "nonEmptyMatchers": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/matchers"
-        },
-        {
-          "anyOf": [
-            {
-              "properties": {
-                "domains": {
-                  "minItems": 1
-                }
-              }
-            },
-            {
-              "properties": {
-                "url_patterns": {
-                  "minItems": 1
-                }
-              }
-            },
-            {
-              "properties": {
-                "url_regex": {
-                  "minItems": 1
-                }
-              }
-            }
-          ]
-        }
-      ]
     },
     "domain": {
       "type": "string",

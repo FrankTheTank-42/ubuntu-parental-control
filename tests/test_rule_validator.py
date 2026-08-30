@@ -19,12 +19,27 @@ class RuleValidatorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.example = load_rules(PROJECT_ROOT / "config" / "rules.example.json")
+        cls.defaults = load_rules(PROJECT_ROOT / "config" / "rules.json")
 
     def errors(self, value: dict) -> list[str]:
         return [str(issue) for issue in RuleValidator().validate(value)]
 
     def test_example_is_valid(self) -> None:
         self.assertEqual([], self.errors(copy.deepcopy(self.example)))
+
+    def test_default_rules_provide_an_always_active_blocklist(self) -> None:
+        self.assertEqual([], self.errors(copy.deepcopy(self.defaults)))
+        self.assertEqual(1, len(self.defaults["blocks"]))
+        block = self.defaults["blocks"][0]
+        self.assertEqual("default-block", block["id"])
+        self.assertEqual("block", block["action"])
+        self.assertTrue(block["enabled"])
+        self.assertTrue(block["user_permissions"]["add_domains"])
+        self.assertEqual(
+            {"domains": [], "url_patterns": [], "url_regex": []},
+            block["targets"],
+        )
+        self.assertNotIn("schedule", block)
 
     def test_duplicate_block_id_is_rejected(self) -> None:
         value = copy.deepcopy(self.example)
@@ -61,10 +76,10 @@ class RuleValidatorTest(unittest.TestCase):
         value["blocks"][0]["targets"]["url_regex"][0]["pattern"] = "example(?=\\.com)"
         self.assertTrue(any("RE2" in error for error in self.errors(value)))
 
-    def test_empty_targets_are_rejected(self) -> None:
+    def test_empty_targets_are_valid_for_a_prepared_blocklist(self) -> None:
         value = copy.deepcopy(self.example)
         value["blocks"][0]["targets"] = {"domains": [], "url_patterns": [], "url_regex": []}
-        self.assertTrue(any("mindestens ein Ziel" in error for error in self.errors(value)))
+        self.assertEqual([], self.errors(value))
 
     def test_duplicate_json_key_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

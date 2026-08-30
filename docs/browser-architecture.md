@@ -1,5 +1,10 @@
 # Browserübergreifende Regelverteilung
 
+Die Sicherheitsziele, Angreiferrollen und bekannten Restrisiken dieser
+Architektur sind im [Threat Model](threat-model.md) festgehalten. Dieses
+Dokument beschreibt den technischen Soll-Datenfluss; das Threat Model bewertet
+zusätzlich seine Vertrauensgrenzen und offenen Härtungsaufgaben.
+
 ## Vertrauensgrenze
 
 `/etc/ubuntu-parental-control/rules.json` enthält die rootgeschützten
@@ -122,6 +127,12 @@ und Chrome. Ein Klick auf die Browseraktion sowie der Eintrag
 Seiten-Kontextmenü verwendet dasselbe Symbol; Firefox zeigt es zusätzlich an
 den Blockierlisten-Untermenüs.
 
+Das Kontextmenü der Browseraktion enthält zusätzlich „Webseite zu Block
+hinzufügen“. Dessen Untermenü wird aus denselben aktiven Blockierlisten wie das
+Seiten-Kontextmenü erzeugt. Nach der Auswahl liefert das Menüereignis den
+zugehörigen aktuellen Tab; die Extension extrahiert ausschließlich dessen
+HTTP(S)-Hostnamen und öffnet den vorhandenen bestätigten Ergänzungsablauf.
+
 Nach einer erfolgreichen Polkit-Änderung wartet der Native Host auf eine neue
 Veröffentlichungsnummer des Daemons und die passende Basis- beziehungsweise
 Benutzerregel-Revision. Den dabei erzeugten signierten Snapshot liefert er
@@ -160,6 +171,27 @@ wertet insbesondere Zeitpläne neu aus. Der Native Host beobachtet die aktive
 Snapshot-Datei und übermittelt eine neue Revision an den laufenden Browser;
 bei verfügbarem Native Host ist für gültige Regeländerungen deshalb kein
 Firefox-Neustart mehr erforderlich.
+
+Alle Aktivierungswege teilen sich eine serielle Warteschlange. Sobald ein
+signierter Native Snapshot aktiv ist, darf ein verspätetes
+`storage.onChanged`-Ereignis ihn nicht durch den unter Firefox möglicherweise
+noch älteren Managed-Storage-Cache ersetzen. Managed Storage bleibt beim
+Browserstart und als expliziter Fallback nach einem abgelehnten Native Snapshot
+weiterhin die Vertrauensbasis.
+
+Die direkte Antwort einer erfolgreichen Schreiboperation und das nachfolgende
+Datei-Live-Event können denselben signierten Snapshot enthalten. Nach
+Signatur-, Schema- und Revisionsprüfung erkennt die Extension eine bereits
+aktive Revision und behandelt die zweite Zustellung nur als Bestätigung. Der
+identische DNR-Regelsatz wird nicht erneut mit denselben IDs registriert.
+
+Der Native Host verhindert die doppelte Zustellung zusätzlich an der Quelle:
+Enthält eine erfolgreiche Befehlsantwort bereits einen Snapshot, merkt sich
+dieser Host-Prozess dessen kryptografische Revision als zugestellt. Erkennt
+der Dateiwächter anschließend dieselbe Revision, aktualisiert er nur seine
+Dateisignatur. Eine abweichende neuere Revision wird weiterhin gesendet. Da
+jede Browser-Verbindung einen eigenen Native-Host-Prozess besitzt, erhalten
+andere laufende Browser die Änderung unabhängig davon als Live-Event.
 
 ## Bewusste DNR-Einschränkung
 

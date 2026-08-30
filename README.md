@@ -44,8 +44,15 @@ Nur Firefox installieren:
 sudo ./installer/install.sh --xpi /pfad/zur/signierten-datei.xpi
 ```
 
-Ein Kinderkonto registrieren, das ausschließlich Blockierlisten append-only
-erweitern darf:
+Ohne weitere Benutzeroption erkennt der Installer automatisch alle
+interaktiven Konten im normalen Ubuntu-UID-Bereich, die weder Mitglied der
+Administratorgruppen `sudo`/`admin` noch das aufrufende `sudo`-Konto sind. Sie
+werden als Kinderkonten registriert und dürfen Blockierlisten ausschließlich
+append-only erweitern. Dienstkonten mit `nologin` oder `false` werden
+ausgeschlossen.
+
+Falls nur bestimmte normale Konten eingeschränkt werden sollen, kann die
+automatische Auswahl explizit überschrieben werden:
 
 ```bash
 sudo ./installer/install.sh \
@@ -54,8 +61,9 @@ sudo ./installer/install.sh \
 ```
 
 `--restricted-user` kann für mehrere Konten wiederholt werden. Bei einer
-erneuten Installation ohne diese Option bleibt die bestehende Kontoliste
-erhalten.
+erneuten Installation ohne diese Option wird die sichere automatische
+Erkennung wiederholt. Ein vorhandener Stand bleibt erhalten, falls dabei kein
+passendes Konto gefunden wird.
 
 Firefox und Google Chrome installieren:
 
@@ -91,6 +99,11 @@ Regel lockern. Diese Ergänzungen verändern die Elternkonfiguration
 getrennt und rootgeschützt in
 `/var/lib/ubuntu-parental-control/user-domains.json` gespeichert und erst im
 signierten effektiven Browser-Snapshot mit den Elternregeln vereinigt.
+
+Eine Neuinstallation enthält bereits die dauerhaft aktive Blockierliste
+„Webseiten sperren“. Sie darf zunächst eine leere Zielmenge besitzen, sodass
+keine Website unbeabsichtigt vorgegeben wird. Das Kinderkonto kann sie sofort
+über die Regelverwaltung und die Kontextmenüs um Domains ergänzen.
 
 In einem nicht als eingeschränkt registrierten Konto lassen sich Blocks
 anlegen, bearbeiten und löschen. Jede Speicherung öffnet eine neue
@@ -212,8 +225,8 @@ Mitternacht. Für Regex mit Groß-/Kleinschreibung steht bei Hinzufügen und
 Entfernen `--case-sensitive` zur Verfügung. Der vollständige Zustand eines
 Blocks ist mit `upcctl show-block BLOCK-ID` sichtbar.
 
-Ein Konto muss bei der Installation mit `--restricted-user` registriert sein,
-um Domains append-only ergänzen zu dürfen. Die Berechtigung gilt automatisch
+Ein automatisch erkanntes oder explizit mit `--restricted-user` registriertes
+Konto darf Domains append-only ergänzen. Die Berechtigung gilt automatisch
 für alle Regeln mit `action: block`; `action: allow` bleibt ausgeschlossen.
 Ergänzungen werden getrennt unter
 `/var/lib/ubuntu-parental-control/user-domains.json` gespeichert. Eltern können
@@ -266,10 +279,16 @@ Managed-Storage-Fallback weiterhin ein vollständiger Browserneustart nötig sei
 
 Nach einer Domain-Ergänzung aus einem Kinderkonto aktiviert die Extension
 zuerst den bestätigten signierten Snapshot und lädt danach bereits geöffnete
-Tabs dieser Domain gezielt neu. Dadurch erscheint die Blockseite sowohl bei
+Tabs dieser Domain unter Umgehung des Browsercaches gezielt neu. Dadurch erscheint die Blockseite sowohl bei
 manueller Eingabe als auch beim Hinzufügen über das Seiten-Kontextmenü ohne
 Firefox-Neustart. Das Erweiterungssymbol und dessen Drei-Punkte-Menü öffnen die
-Regelverwaltung direkt.
+Regelverwaltung direkt. Im selben Drei-Punkte-Menü steht „Webseite zu Block
+hinzufügen“ mit den vorhandenen Blockierlisten als Untermenü zur Verfügung.
+
+Ein bereits aktiver Native-Live-Snapshot wird nicht durch ein verspätetes
+`storage.onChanged`-Ereignis auf den älteren Firefox-Policy-Cache
+zurückgesetzt. Sämtliche Snapshot-Aktivierungen und Zeitplanauswertungen laufen
+in einer gemeinsamen Reihenfolge ab.
 
 ### Entfernen
 
@@ -300,7 +319,19 @@ node tests/test_background_start.js
 node tests/test_native_live_update.js
 ```
 
-## Sicherheitsgrenze
+## Sicherheit und Review
+
+Das [Threat Model](docs/threat-model.md) beschreibt Schutzversprechen,
+Angreiferrollen, Vertrauensgrenzen und die priorisierten offenen Risiken. Die
+[Browserarchitektur](docs/browser-architecture.md) dokumentiert den technischen
+Datenfluss. Hinweise für eine vertrauliche Schwachstellenmeldung stehen in der
+[Sicherheitsrichtlinie](SECURITY.md).
+
+Das Threat Model ist ein entwicklerinternes Review und kein unabhängiges Audit.
+Sicherheitsrelevante Änderungen sollen die betroffene Invariante benennen und
+einen negativen Regressionstest ergänzen.
+
+### Sicherheitsgrenze
 
 Das Kinderkonto darf weder `sudo`- noch Root-Rechte besitzen. Der Installer
 schützt Systemdateien vor normalen Benutzern. Ein Benutzer mit Root-Zugriff

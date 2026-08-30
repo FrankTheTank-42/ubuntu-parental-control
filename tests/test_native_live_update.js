@@ -95,6 +95,7 @@ async function main() {
   let statusSigningKey = keyPair.privateKey;
   let statusRestricted = true;
   let adminRequestCount = 0;
+  let lastAddedManaged = null;
   const nativePort = {
     onMessage: hook(),
     onDisconnect: hook(),
@@ -121,14 +122,15 @@ async function main() {
         return;
       }
       if (request.command === "add_domain") {
+        lastAddedManaged = await signedManaged(
+          rules(["example.com", request.domain]),
+          keyPair,
+          publicKeySpki,
+        );
         respond({
           block_id: request.block_id,
           domain: request.domain,
-          managed: await signedManaged(
-            rules(["example.com", request.domain]),
-            keyPair,
-            publicKeySpki,
-          ),
+          managed: lastAddedManaged,
         });
         return;
       }
@@ -160,6 +162,7 @@ async function main() {
     },
   };
   let dynamicRules = [];
+  let dynamicUpdateCount = 0;
   const createdContextMenus = [];
   const createdTabs = [];
   const reloadedTabs = [];
@@ -171,7 +174,10 @@ async function main() {
       MAX_NUMBER_OF_DYNAMIC_RULES: 5000,
       async getDynamicRules() { return dynamicRules; },
       async isRegexSupported() { return { isSupported: true }; },
-      async updateDynamicRules(update) { dynamicRules = update.addRules; },
+      async updateDynamicRules(update) {
+        dynamicUpdateCount += 1;
+        dynamicRules = update.addRules;
+      },
       async updateStaticRules() {},
     },
     contextMenus: {
@@ -202,7 +208,8 @@ async function main() {
         ]);
         return [{ id: 71 }, { id: 72 }, { id: 71 }];
       },
-      async reload(tabId) {
+      async reload(tabId, options) {
+        assert.equal(options.bypassCache, true);
         assert.ok(
           dynamicRules.some((rule) =>
             rule.condition.requestDomains?.includes("new-child.example"),
@@ -233,10 +240,18 @@ async function main() {
   assert.equal(dynamicRules.length, 1);
   assert.equal(dynamicRules[0].condition.requestDomains.join(","), "example.com");
   assert.equal(nativePort.onMessage.listeners.length, 0);
-  assert.equal(createdContextMenus.length, 3);
+  assert.equal(createdContextMenus.length, 5);
   assert.equal(createdContextMenus[0].id, "upc-open-rule-management");
   assert.deepEqual(Array.from(createdContextMenus[0].contexts), ["action"]);
-  assert.equal(createdContextMenus[2].icons["16"], "icons/icon-16.png");
+  const pageChildMenu = createdContextMenus.find(
+    (item) => item.id === "upc-add-current-domain:self-blocked-sites",
+  );
+  const actionChildMenu = createdContextMenus.find(
+    (item) => item.id === "upc-action-add-current-domain:self-blocked-sites",
+  );
+  assert.equal(pageChildMenu.icons["16"], "icons/icon-16.png");
+  assert.equal(actionChildMenu.parentId, "upc-action-add-current-domain");
+  assert.deepEqual(Array.from(actionChildMenu.contexts), ["action"]);
 
   const contextMenuClick = api.contextMenus.onClicked.listeners[0];
   contextMenuClick({
@@ -247,6 +262,16 @@ async function main() {
   assert.equal(createdTabs.length, 1);
   assert.match(createdTabs[0].url, /context_block=self-blocked-sites/);
   assert.match(createdTabs[0].url, /context_domain=www.example.net/);
+  assert.equal(nativePort.onMessage.listeners.length, 0);
+
+  contextMenuClick(
+    { menuItemId: "upc-action-add-current-domain:self-blocked-sites" },
+    { id: 42, url: "https://News.Example.ORG/article?id=7" },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(createdTabs.length, 2);
+  assert.match(createdTabs[1].url, /context_block=self-blocked-sites/);
+  assert.match(createdTabs[1].url, /context_domain=news.example.org/);
   assert.equal(nativePort.onMessage.listeners.length, 0);
 
   contextMenuClick({ menuItemId: "upc-open-rule-management" });
@@ -278,11 +303,41 @@ async function main() {
       domain: "new-child.example",
     }, null, resolve);
   });
-  assert.equal(childAddition.ok, true);
+  assert.equal(childAddition.ok, true, childAddition.error);
   assert.equal(dynamicRules.length, 2);
   assert.equal(dynamicRules[1].condition.requestDomains.join(","), "new-child.example");
   assert.deepEqual(reloadedTabs, [71, 72]);
   assert.equal(childAddition.result.reloaded_tabs, 2);
+
+  const updatesAfterDirectAddition = dynamicUpdateCount;
+  for (const listener of nativePort.onMessage.listeners) {
+    listener({ event: "snapshot", managed: lastAddedManaged });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(
+    dynamicUpdateCount,
+    updatesAfterDirectAddition,
+    "dieselbe Native Revision darf den DNR-Regelsatz nicht erneut installieren",
+  );
+  assert.equal(dynamicRules[1].condition.requestDomains.join(","), "new-child.example");
+
+  // Firefox can signal a policy-file change while storage.managed still
+  // exposes the pre-update snapshot. That delayed fallback must never roll
+  // back a newer verified native activation.
+  for (const listener of api.storage.onChanged.listeners) {
+    listener({}, "managed");
+  }
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(dynamicRules.length, 2);
+  assert.equal(dynamicRules[1].condition.requestDomains.join(","), "new-child.example");
+  const stateAfterDelayedManagedEvent = await new Promise((resolve) => {
+    runtimeMessage({ type: "get_ui_state" }, null, resolve);
+  });
+  assert.equal(stateAfterDelayedManagedEvent.ok, true);
+  assert.ok(
+    stateAfterDelayedManagedEvent.result.rules.blocks[0].targets.domains
+      .includes("new-child.example"),
+  );
   const rejectedAdminEdit = await new Promise((resolve) => {
     runtimeMessage({ type: "admin_apply", rules: rules([]) }, null, resolve);
   });
