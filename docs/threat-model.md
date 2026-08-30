@@ -1,6 +1,6 @@
 # Threat Model und Sicherheitsreview
 
-Stand: 30. August 2026 · Projektversion 0.4.0
+Stand: 30. August 2026 · Projektversion 0.5.0
 
 Dieses Dokument beschreibt die beabsichtigten Sicherheitsgarantien, die
 Vertrauensgrenzen und die derzeit bekannten Restrisiken von Ubuntu Parental

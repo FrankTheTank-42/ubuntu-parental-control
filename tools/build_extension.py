@@ -69,6 +69,7 @@ def main() -> None:
     for required in (
         SOURCE / "options" / "options.html",
         SOURCE / "options" / "schedule-model.js",
+        SOURCE / "options" / "order-model.js",
         SOURCE / "options" / "options.js",
     ):
         if not required.is_file():

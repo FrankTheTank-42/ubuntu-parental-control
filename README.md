@@ -89,9 +89,15 @@ verwalteten Filter nicht umgehen beziehungsweise verändern können.
 
 ### Grafische Regelverwaltung
 
-Die Einstellungen der Extension öffnen eine gemeinsame, LeechBlock-ähnliche
-Regelübersicht. Die Elternansicht bietet den vollständigen Editor. In der
-Kinderansicht bleiben die geschützten Einstellungen sichtbar, sind aber klar
+Die Einstellungen der Extension öffnen eine zweistufige Regelverwaltung. Die
+erste Ansicht zeigt Name, Aktion, Status und Priorität jedes Blocks; die höchste
+Priorität steht oben. Eltern können die Reihenfolge per Drag-and-drop, über
+Auf/Ab-Schaltflächen oder mit `Alt`+`Pfeil hoch/runter` ändern. Ein Klick öffnet
+die Detailansicht für Ziele, Ausnahmen und Zeitfenster. Die Profilwahl erklärt
+zusätzlich den Blocklisten-Betrieb (`default_action: allow`) und den
+Whitelist-Betrieb (`default_action: block`). Die Elternansicht bietet den
+vollständigen Editor. In der Kinderansicht bleiben die geschützten Einstellungen
+sichtbar, sind aber klar
 ausgegraut und technisch deaktiviert. Das Kind kann jede Blockierliste um eine
 Domain ergänzen, aber weder eigene noch vorgegebene Domains entfernen und keine
 Regel lockern. Diese Ergänzungen verändern die Elternkonfiguration

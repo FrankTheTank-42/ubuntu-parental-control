@@ -3,11 +3,15 @@
 const api = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof globalThis.browser !== "undefined";
 const blocksElement = document.querySelector("#blocks");
-const template = document.querySelector("#block-template");
+const rowTemplate = document.querySelector("#block-row-template");
+const detailTemplate = document.querySelector("#block-detail-template");
 const messageElement = document.querySelector("#message");
 const { WEEKDAYS, parseRrule, scheduleFromDrafts } = globalThis.UPC_SCHEDULE_MODEL;
+const { sortedBlocks, moveBlock, prioritiesForOrder } = globalThis.UPC_ORDER_MODEL;
 let currentState = null;
 let adminBusy = false;
+let selectedBlockId = null;
+let draggedBlockId = null;
 let refreshAfterRepair = false;
 let pendingContextAddition = (() => {
   const parameters = new URLSearchParams(location.search);
@@ -264,7 +268,7 @@ function setAdminBusy(busy) {
   document.body.setAttribute("aria-busy", String(busy));
   document.querySelector("#busy-overlay").hidden = !busy;
   for (const button of document.querySelectorAll(
-    ".admin-form button, #create-block, .remove-user-domain",
+    ".admin-form button, #create-block, #save-profile, .reorder-buttons button, .remove-user-domain",
   )) {
     button.disabled = busy || button.dataset.permanentlyDisabled === "true";
   }
@@ -405,146 +409,142 @@ function setupAdminForm(card, block, baseRules, editable, profileTimezone) {
   });
 }
 
-function renderBlocks(state) {
-  const adminMode = state.native.connected && state.native.status && !state.native.status.restricted;
-  const childMode = state.native.connected && state.native.status?.restricted;
-  document.body.classList.remove("mode-loading", "mode-parent", "mode-child", "mode-readonly");
-  document.body.classList.add(adminMode ? "mode-parent" : childMode ? "mode-child" : "mode-readonly");
+function modes(state) {
+  const admin = Boolean(state.native.connected && state.native.status && !state.native.status.restricted);
+  const child = Boolean(state.native.connected && state.native.status?.restricted);
+  return { admin, child };
+}
+
+function fillBadges(container, block) {
+  container.append(
+    badge(block.action === "block" ? "Blockieren" : "Erlauben", block.action),
+    badge(block.enabled ? "Aktiv" : "Inaktiv", block.enabled ? "" : "inactive"),
+  );
+}
+
+async function saveOrder(blockId, offset) {
+  if (!modes(currentState).admin || adminBusy) return;
+  const rules = structuredClone(currentState.base_rules);
+  const ordered = moveBlock(rules.blocks, blockId, offset);
+  prioritiesForOrder(ordered).forEach(({ id, priority }) => {
+    rules.blocks.find((block) => block.id === id).priority = priority;
+  });
+  rules.blocks = ordered;
+  await applyAdminRules(rules, "Die Block-Reihenfolge wurde gespeichert.");
+}
+
+function openDetail(blockId) {
+  selectedBlockId = blockId;
+  renderDetail(currentState);
+  document.querySelector("#overview-view").hidden = true;
+  document.querySelector("#detail-view").hidden = false;
+  document.querySelector("#page-subtitle").textContent = "Ziele, Ausnahmen und Zeitfenster bearbeiten.";
+  document.querySelector("#back-to-overview").focus();
+}
+
+function renderOverview(state) {
+  const { admin, child } = modes(state);
+  const editable = admin && Boolean(state.base_rules);
   const rules = state.rules;
   blocksElement.replaceChildren();
-  if (!rules) {
-    showMessage("Es ist noch kein gültiger Regelsnapshot verfügbar.", true);
-    return;
-  }
-  let domainCount = 0;
-  for (const block of rules.blocks) {
-    const baseBlock = adminMode
-      ? state.base_rules?.blocks.find((item) => item.id === block.id)
-      : null;
-    const ownDomains = new Set(
-      state.user_domains?.users?.[String(state.native.status?.uid)]?.[block.id] ?? [],
-    );
-    const baseDomains = new Set(
-      baseBlock?.targets.domains
-        ?? block.targets.domains.filter((domain) => !ownDomains.has(domain)),
-    );
-    domainCount += block.targets.domains.length;
-    const card = template.content.firstElementChild.cloneNode(true);
-    card.querySelector(".block-name").textContent = block.name;
-    card.querySelector(".block-id").textContent = `Technische ID: ${block.id}`;
-    card.querySelector(".block-id").title =
-      "Automatisch erzeugte interne Kennung. Sie besteht aus Kleinbuchstaben, Zahlen und Bindestrichen.";
-    const badges = card.querySelector(".badges");
-    badges.append(
-      badge(block.action === "block" ? "Blockieren" : "Erlauben", block.action),
-      badge(block.enabled ? "Aktiv" : "Inaktiv", block.enabled ? "" : "inactive"),
-      badge(`Priorität ${block.priority}`),
-    );
-    card.querySelector(".block-meta").textContent = scheduleText(block);
-    const domains = card.querySelector(".domain-list");
-    if (block.targets.domains.length) {
-      for (const domain of block.targets.domains) {
-        const item = document.createElement("span");
-        item.className = `domain ${baseDomains.has(domain) ? "" : "user-added"}`.trim();
-        item.textContent = domain;
-        if (!baseDomains.has(domain)) {
-          const ownerUid = userDomainOwner(state, block.id, domain);
-          item.title = childMode && ownerUid === state.native.status.uid
-            ? "Von dir als geschützte Kinderergänzung gespeichert"
-            : ownerUid
-              ? `Von eingeschränktem Konto UID ${ownerUid} ergänzt`
-              : "Von einem eingeschränkten Konto ergänzt";
-          if (adminMode && ownerUid) {
-            const remove = document.createElement("button");
-            remove.type = "button";
-            remove.className = "remove-user-domain";
-            remove.textContent = "×";
-            remove.title = "Benutzer-Ergänzung als Administrator entfernen";
-            remove.addEventListener("click", async () => {
-              if (!confirm(`${domain} aus den Ergänzungen von UID ${ownerUid} entfernen?`)) return;
-              try {
-                await runAdminOperation(
-                  () => send({
-                    type: "admin_remove_user_domain",
-                    uid: ownerUid,
-                    block_id: block.id,
-                    domain,
-                  }),
-                  `${domain} wurde aus den Benutzer-Ergänzungen entfernt.`,
-                );
-              } catch (error) {
-                showMessage(error.message, true);
-              }
-            });
-            item.append(remove);
-          }
-        }
-        domains.append(item);
-      }
-    } else {
-      const empty = document.createElement("span");
-      empty.className = "empty";
-      empty.textContent = "Keine Domain-Ziele";
-      domains.append(empty);
+  for (const [index, block] of sortedBlocks(rules.blocks).entries()) {
+    const row = rowTemplate.content.firstElementChild.cloneNode(true);
+    row.dataset.blockId = block.id;
+    row.draggable = editable;
+    row.querySelector(".block-name").textContent = block.name;
+    row.querySelector(".block-id").textContent = block.id;
+    row.querySelector(".priority-label").textContent = `Priorität ${block.priority}`;
+    fillBadges(row.querySelector(".badges"), block);
+    row.querySelector(".block-open").addEventListener("click", () => openDetail(block.id));
+    row.addEventListener("dblclick", () => openDetail(block.id));
+    const up = row.querySelector(".move-up");
+    const down = row.querySelector(".move-down");
+    for (const button of [up, down]) {
+      button.disabled = !editable;
+      button.dataset.permanentlyDisabled = editable ? "false" : "true";
     }
+    up.disabled ||= index === 0;
+    down.disabled ||= index === rules.blocks.length - 1;
+    up.addEventListener("click", () => saveOrder(block.id, -1).catch((error) => showMessage(error.message, true)));
+    down.addEventListener("click", () => saveOrder(block.id, 1).catch((error) => showMessage(error.message, true)));
+    row.addEventListener("keydown", (event) => {
+      if (!editable || !event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      saveOrder(block.id, event.key === "ArrowUp" ? -1 : 1).catch((error) => showMessage(error.message, true));
+    });
+    row.addEventListener("dragstart", (event) => { draggedBlockId = block.id; row.classList.add("dragging"); event.dataTransfer.effectAllowed = "move"; });
+    row.addEventListener("dragend", () => { draggedBlockId = null; row.classList.remove("dragging"); });
+    row.addEventListener("dragover", (event) => { if (editable && draggedBlockId && draggedBlockId !== block.id) { event.preventDefault(); row.classList.add("drag-target"); } });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-target"));
+    row.addEventListener("drop", (event) => {
+      event.preventDefault(); row.classList.remove("drag-target");
+      const ordered = sortedBlocks(rules.blocks); const from = ordered.findIndex((item) => item.id === draggedBlockId); const to = ordered.findIndex((item) => item.id === block.id);
+      if (from >= 0 && to >= 0 && from !== to) saveOrder(draggedBlockId, to - from).catch((error) => showMessage(error.message, true));
+    });
+    blocksElement.append(row);
+  }
+  const profile = document.querySelector("#profile-form");
+  const select = document.querySelector("#default-action");
+  select.value = rules.profile.default_action;
+  select.disabled = !editable;
+  document.querySelector("#save-profile").disabled = !editable;
+  document.querySelector("#save-profile").dataset.permanentlyDisabled = editable ? "false" : "true";
+  profile.classList.toggle("locked", !editable);
+  profile.title = child ? "Nur ein Elternkonto kann den Filtermodus ändern." : "";
+  document.querySelector("#order-help").textContent = editable
+    ? "Höchste Priorität steht oben. Zum Verschieben ziehen oder Alt+Pfeil hoch/runter verwenden."
+    : "Höchste Priorität steht oben. Die Reihenfolge ist in dieser Ansicht schreibgeschützt.";
+}
 
-    const form = card.querySelector(".add-domain-form");
-    if (childMode && block.action === "block") {
-      form.hidden = false;
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (adminBusy) return;
-        const input = form.querySelector(".domain-input");
-        const button = form.querySelector("button");
-        const domain = input.value.trim().toLowerCase();
-        setAdminBusy(true);
-        button.disabled = true;
-        showMessage(`${domain} wird gespeichert …`);
-        try {
-          await send({ type: "add_domain", block_id: block.id, domain });
-          input.value = "";
-          showMessage(
-            `${domain} wurde als geschützte Kinderergänzung zu „${block.name}“ gespeichert.`,
-          );
-          await load();
-        } catch (error) {
-          showMessage(error.message, true);
-        } finally {
-          button.disabled = false;
-          setAdminBusy(false);
-        }
-      });
-    } else if (
-      block.action === "block"
-      && (!state.native.connected || !state.native.status || childMode)
-    ) {
-      const unavailable = card.querySelector(".add-domain-unavailable");
-      unavailable.hidden = false;
-      const unavailableDetail = unavailable.querySelector(".add-domain-unavailable-detail");
-      if (!state.native.connected || !state.native.status) {
-        unavailableDetail.textContent = nativeFailure(state.native).detail;
-      } else {
-        unavailableDetail.textContent =
-          "Der Native Host hat für diese Blockierliste keine sichere Schreibfreigabe zurückgegeben.";
-      }
-    }
-    if (adminMode && state.base_rules && baseBlock) {
-      setupAdminForm(card, baseBlock, state.base_rules, true, rules.profile.timezone);
-    } else if (childMode) {
-      setupAdminForm(card, block, null, false, rules.profile.timezone);
-    }
-    blocksElement.append(card);
+function renderDomains(card, state, block, baseBlock) {
+  const { admin, child } = modes(state);
+  const own = new Set(state.user_domains?.users?.[String(state.native.status?.uid)]?.[block.id] ?? []);
+  const base = new Set(baseBlock?.targets.domains ?? block.targets.domains.filter((domain) => !own.has(domain)));
+  const container = card.querySelector(".domain-list");
+  for (const domain of block.targets.domains) {
+    const item = document.createElement("span"); item.className = `domain ${base.has(domain) ? "" : "user-added"}`.trim(); item.textContent = domain;
+    const ownerUid = base.has(domain) ? null : userDomainOwner(state, block.id, domain);
+    if (!base.has(domain)) item.title = child && ownerUid === state.native.status.uid ? "Von dir ergänzt" : `Von eingeschränktem Konto UID ${ownerUid} ergänzt`;
+    if (admin && ownerUid) { const remove = document.createElement("button"); remove.type = "button"; remove.className = "remove-user-domain"; remove.textContent = "×"; remove.title = "Kinderergänzung entfernen"; remove.addEventListener("click", async () => { if (!confirm(`${domain} aus den Ergänzungen von UID ${ownerUid} entfernen?`)) return; try { await runAdminOperation(() => send({ type: "admin_remove_user_domain", uid: ownerUid, block_id: block.id, domain }), `${domain} wurde entfernt.`); } catch (error) { showMessage(error.message, true); } }); item.append(remove); }
+    container.append(item);
   }
-  document.querySelector("#block-count").textContent = String(rules.blocks.length);
-  document.querySelector("#domain-count").textContent = String(domainCount);
+  if (!block.targets.domains.length) { const empty = document.createElement("span"); empty.className = "empty"; empty.textContent = "Keine Domain-Ziele"; container.append(empty); }
+}
+
+function renderDetail(state) {
+  const block = state.rules.blocks.find((item) => item.id === selectedBlockId);
+  if (!block) { selectedBlockId = null; showOverview(); return; }
+  const { admin, child } = modes(state);
+  const baseBlock = admin ? state.base_rules?.blocks.find((item) => item.id === block.id) : null;
+  const card = detailTemplate.content.firstElementChild.cloneNode(true);
+  card.querySelector(".block-name").textContent = block.name; card.querySelector(".block-id").textContent = `Technische ID: ${block.id}`; fillBadges(card.querySelector(".badges"), block);
+  renderDomains(card, state, block, baseBlock);
+  const addForm = card.querySelector(".add-domain-form");
+  if (child && block.action === "block") { addForm.hidden = false; addForm.addEventListener("submit", async (event) => { event.preventDefault(); const input = addForm.querySelector(".domain-input"); const domain = input.value.trim().toLowerCase(); setAdminBusy(true); try { await send({ type: "add_domain", block_id: block.id, domain }); input.value = ""; showMessage(`${domain} wurde als geschützte Kinderergänzung gespeichert.`); await load(); } catch (error) { showMessage(error.message, true); } finally { setAdminBusy(false); } }); }
+  else if (block.action === "block" && (!state.native.connected || !state.native.status)) { const unavailable = card.querySelector(".add-domain-unavailable"); unavailable.hidden = false; unavailable.querySelector(".add-domain-unavailable-detail").textContent = nativeFailure(state.native).detail; }
+  setupAdminForm(card, baseBlock ?? block, state.base_rules, admin && Boolean(baseBlock), state.rules.profile.timezone);
+  document.querySelector("#detail-container").replaceChildren(card);
+}
+
+function showOverview() {
+  selectedBlockId = null;
+  document.querySelector("#detail-view").hidden = true;
+  document.querySelector("#overview-view").hidden = false;
+  document.querySelector("#page-subtitle").textContent = "Blocks ordnen und Filterverhalten festlegen.";
+  document.querySelector("#overview-title").focus?.();
+}
+
+function renderBlocks(state) {
+  const { admin, child } = modes(state);
+  document.body.classList.remove("mode-loading", "mode-parent", "mode-child", "mode-readonly");
+  document.body.classList.add(admin ? "mode-parent" : child ? "mode-child" : "mode-readonly");
+  if (!state.rules) { showMessage("Es ist noch kein gültiger Regelsnapshot verfügbar.", true); return; }
+  document.querySelector("#block-count").textContent = String(state.rules.blocks.length);
+  document.querySelector("#domain-count").textContent = String(state.rules.blocks.reduce((sum, block) => sum + block.targets.domains.length, 0));
   document.querySelector("#revision").textContent = state.revision?.slice(0, 10) ?? "–";
-  document.querySelector("#default-action").textContent =
-    `Standard: ${rules.profile.default_action === "block" ? "blockieren" : "erlauben"}`;
-  const createButton = document.querySelector("#create-block");
-  createButton.hidden = !(adminMode || childMode);
-  createButton.disabled = childMode;
-  createButton.dataset.permanentlyDisabled = childMode ? "true" : "false";
-  createButton.title = childMode ? "Nur ein Elternkonto kann neue Blocks anlegen." : "";
+  const create = document.querySelector("#create-block"); create.hidden = !(admin || child); create.disabled = child; create.dataset.permanentlyDisabled = child ? "true" : "false"; create.title = child ? "Nur ein Elternkonto kann neue Blocks anlegen." : "";
+  renderOverview(state);
+  if (selectedBlockId) renderDetail(state);
 }
 
 async function load() {
@@ -570,6 +570,23 @@ async function load() {
 }
 
 document.querySelector("#refresh").addEventListener("click", load);
+document.querySelector("#back-to-overview").addEventListener("click", showOverview);
+document.querySelector("#profile-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!modes(currentState).admin || !currentState.base_rules) return;
+  const rules = structuredClone(currentState.base_rules);
+  rules.profile.default_action = document.querySelector("#default-action").value;
+  try {
+    await applyAdminRules(
+      rules,
+      rules.profile.default_action === "block"
+        ? "Whitelist-Betrieb wurde aktiviert."
+        : "Blocklisten-Betrieb wurde aktiviert.",
+    );
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+});
 document.querySelector("#repair-native").addEventListener("click", () => {
   refreshAfterRepair = true;
   showMessage(

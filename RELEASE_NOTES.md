@@ -1,5 +1,22 @@
 # Versionshinweise
 
+## 0.5.0
+
+### Firefox und Chrome
+
+- Teilt die grafische Regelverwaltung in eine kompakte Blockübersicht und eine
+  separate Detailansicht für Domains, URL-Patterns, Regex-Regeln, Ausnahmen und
+  Zeitfenster.
+- Macht die Prioritätsreihenfolge direkt sichtbar. Eltern können Blocks per
+  Drag-and-drop, über Auf/Ab-Schaltflächen oder barrierearm mit
+  `Alt`+`Pfeil hoch/runter` verschieben; die höchste Priorität steht oben.
+- Ergänzt eine verständliche Profilwahl zwischen Blocklisten-Betrieb
+  (nicht passende Websites erlauben) und Whitelist-Betrieb (nicht passende
+  Websites blockieren).
+- Zeigt Reihenfolge, Profilmodus und sämtliche Regeldetails in der
+  Kinderansicht weiterhin sichtbar, aber deaktiviert. Ausschließlich das
+  append-only Ergänzen von Domains in Blockierlisten bleibt möglich.
+
 ## 0.4.0
 
 ### Firefox/AMO

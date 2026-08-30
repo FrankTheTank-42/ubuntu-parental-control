@@ -1,150 +1,24 @@
 <!doctype html>
 <html lang="de">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="light dark">
-    <title>Ubuntu Parental Control</title>
-    <link rel="stylesheet" href="options.css">
-  </head>
-  <body class="mode-loading" aria-busy="false">
-    <header class="app-header">
-      <div>
-        <div class="title-line">
-          <p class="eyebrow">Ubuntu Parental Control</p>
-          <span id="view-mode" class="view-mode">Zugriff wird geprüft</span>
-        </div>
-        <h1>Webfilter-Regeln</h1>
-        <p class="subtitle">Aktive Sperren ansehen und erlaubte Domains zusätzlich einschränken.</p>
-      </div>
-      <button id="refresh" class="secondary" type="button">Aktualisieren</button>
-    </header>
-
-    <main>
-      <section id="connection" class="connection" aria-live="polite">
-        <span class="status-dot"></span>
-        <div>
-          <strong id="connection-title">Verbindung wird geprüft …</strong>
-          <p id="connection-detail"></p>
-          <p id="connection-error-detail" class="connection-error-detail" hidden></p>
-          <a id="repair-native" class="repair-native" href="ubuntu-parental-control://firefox-consent/allow" hidden>Firefox-Verbindung reparieren</a>
-        </div>
-      </section>
-
-      <section class="summary" aria-label="Regelübersicht">
-        <div><span id="block-count">–</span><small>Blocks</small></div>
-        <div><span id="domain-count">–</span><small>Domains</small></div>
-        <div><span id="revision">–</span><small>Revision</small></div>
-      </section>
-
-      <section>
-        <div class="section-heading">
-        <div>
-          <p class="eyebrow">Konfiguration</p>
-          <h2>Blocks</h2>
-        </div>
-        <div class="section-actions">
-          <p id="default-action" class="default-action"></p>
-          <button id="create-block" class="secondary" type="button" hidden>Block anlegen</button>
-        </div>
-        </div>
-        <div id="message" class="message" hidden role="status"></div>
-        <div id="blocks" class="blocks"></div>
-      </section>
-    </main>
-
-    <datalist id="timezone-suggestions">
-      <option value="Europe/Berlin"></option>
-      <option value="UTC"></option>
-    </datalist>
-
-    <div id="busy-overlay" class="busy-overlay" hidden role="status" aria-live="assertive">
-      <div class="busy-card">
-        <span class="spinner" aria-hidden="true"></span>
-        <div>
-          <strong>Regeln werden gespeichert …</strong>
-          <p>Bitte warte auf die Bestätigung des Verwaltungsdienstes.</p>
-        </div>
-      </div>
-    </div>
-
-    <template id="block-template">
-      <article class="block-card">
-        <div class="block-heading">
-          <div>
-            <h3 class="block-name"></h3>
-            <code class="block-id"></code>
-          </div>
-          <div class="badges"></div>
-        </div>
-        <div class="block-meta"></div>
-        <div class="domain-list"></div>
-        <form class="add-domain-form" hidden>
-          <label>
-            Website zusätzlich blockieren
-            <span>Nur die Domain ohne <code>https://</code>, Pfad oder Port eingeben.</span>
-          </label>
-          <div class="input-row">
-            <input class="domain-input" type="text" inputmode="url" autocomplete="off"
-              placeholder="beispiel.de" maxlength="253" required>
-            <button type="submit">Domain blockieren</button>
-          </div>
-          <p class="append-note">Wird als geschützte Kinderergänzung getrennt von <code>rules.json</code> gespeichert und kann von diesem Konto nicht entfernt werden.</p>
-        </form>
-        <div class="add-domain-unavailable" hidden role="alert">
-          <strong>Domain-Ergänzung nicht verfügbar</strong>
-          <p class="add-domain-unavailable-detail"></p>
-          <p>Bitte oben auf <strong>Aktualisieren</strong> klicken. Bleibt der Fehler bestehen, muss ein Elternteil die lokale Installation prüfen.</p>
-        </div>
-        <form class="admin-form" hidden>
-          <div class="admin-title">
-            <div>
-              <strong>Administrativ bearbeiten</strong>
-              <span>Beim Speichern wird eine Polkit-Anmeldung verlangt.</span>
-            </div>
-            <div class="switches">
-              <label class="switch-label"><input class="admin-enabled" type="checkbox"> Aktiv</label>
-            </div>
-          </div>
-          <div class="form-grid">
-            <label>Name<input class="admin-name" type="text" maxlength="120" required></label>
-            <label>Aktion<select class="admin-action"><option value="block">Blockieren</option><option value="allow">Erlauben</option></select></label>
-            <label>Priorität<input class="admin-priority" type="number" min="-1000" max="1000" required></label>
-            <label class="wide">Domains <span>Eine Domain pro Zeile</span><textarea class="admin-domains" rows="4"></textarea></label>
-            <label class="wide">URL-Patterns <span>Ein Pattern pro Zeile</span><textarea class="admin-patterns" rows="3"></textarea></label>
-            <label class="wide">URL-Regex <span><code>i:</code> oder <code>s:</code> voranstellen</span><textarea class="admin-regex" rows="3"></textarea></label>
-            <label class="wide">Domain-Ausnahmen <span>Eine Domain pro Zeile</span><textarea class="admin-exceptions" rows="3"></textarea></label>
-            <fieldset class="schedule-editor wide">
-              <legend>Zeitfenster</legend>
-              <p class="schedule-help">
-                Der Block ist nur innerhalb der eingetragenen Zeitfenster aktiv.
-                Ohne Zeitfenster gilt er durchgehend.
-              </p>
-              <div class="schedule-toolbar">
-                <label>
-                  Zeitzone
-                  <span>IANA-Zeitzone für alle Fenster dieses Blocks</span>
-                  <input class="admin-schedule-timezone" type="text"
-                    list="timezone-suggestions" maxlength="64" required>
-                </label>
-                <button class="secondary add-window" type="button">Zeitfenster hinzufügen</button>
-              </div>
-              <div class="schedule-empty">Keine Zeitfenster – der Block ist durchgehend aktiv.</div>
-              <div class="schedule-windows"></div>
-              <p class="schedule-overnight-note">
-                Liegt die Endzeit vor oder gleich der Startzeit, endet das Fenster am Folgetag.
-              </p>
-            </fieldset>
-          </div>
-          <div class="admin-buttons">
-            <button type="submit">Block speichern</button>
-            <button class="danger delete-block" type="button">Block löschen</button>
-          </div>
-        </form>
-      </article>
-    </template>
-
-    <script src="schedule-model.js"></script>
-    <script src="options.js"></script>
-  </body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>Ubuntu Parental Control</title><link rel="stylesheet" href="options.css"></head>
+<body class="mode-loading" aria-busy="false">
+<header class="app-header"><div><div class="title-line"><p class="eyebrow">Ubuntu Parental Control</p><span id="view-mode" class="view-mode">Zugriff wird geprüft</span></div><h1>Webfilter-Regeln</h1><p id="page-subtitle" class="subtitle">Blocks ordnen und Filterverhalten festlegen.</p></div><button id="refresh" class="secondary" type="button">Aktualisieren</button></header>
+<main>
+<section id="connection" class="connection" aria-live="polite"><span class="status-dot"></span><div><strong id="connection-title">Verbindung wird geprüft …</strong><p id="connection-detail"></p><p id="connection-error-detail" class="connection-error-detail" hidden></p><a id="repair-native" class="repair-native" href="ubuntu-parental-control://firefox-consent/allow" hidden>Firefox-Verbindung reparieren</a></div></section>
+<section class="summary" aria-label="Regelübersicht"><div><span id="block-count">–</span><small>Blocks</small></div><div><span id="domain-count">–</span><small>Domains</small></div><div><span id="revision">–</span><small>Revision</small></div></section>
+<div id="message" class="message" hidden role="status"></div>
+<section id="overview-view" aria-labelledby="overview-title"><div class="section-heading"><div><p class="eyebrow">Konfiguration</p><h2 id="overview-title">Blocks</h2></div><button id="create-block" class="secondary" type="button" hidden>Block anlegen</button></div>
+<form id="profile-form" class="profile-card"><div><label for="default-action"><strong>Wenn keine Regel passt</strong></label><p>Bestimmt, ob das Profil als Blockliste oder Whitelist arbeitet.</p></div><select id="default-action" name="default_action"><option value="allow">Blocklisten-Betrieb – alle anderen Websites erlauben</option><option value="block">Whitelist-Betrieb – alle anderen Websites blockieren</option></select><button id="save-profile" type="submit">Profil speichern</button></form>
+<p id="order-help" class="order-help">Höchste Priorität steht oben. Zum Verschieben ziehen oder den Block fokussieren und Alt+Pfeil hoch/runter drücken.</p><div id="blocks" class="blocks" role="list" aria-describedby="order-help"></div></section>
+<section id="detail-view" hidden aria-labelledby="detail-title"><button id="back-to-overview" class="back-button secondary" type="button">← Zurück zu allen Blocks</button><div id="detail-container"></div></section>
+</main>
+<datalist id="timezone-suggestions"><option value="Europe/Berlin"></option><option value="UTC"></option></datalist>
+<div id="busy-overlay" class="busy-overlay" hidden role="status" aria-live="assertive"><div class="busy-card"><span class="spinner" aria-hidden="true"></span><div><strong>Regeln werden gespeichert …</strong><p>Bitte warte auf die Bestätigung des Verwaltungsdienstes.</p></div></div></div>
+<template id="block-row-template"><article class="block-row" role="listitem" tabindex="0" draggable="false"><span class="drag-handle" aria-hidden="true">⠿</span><button class="block-open" type="button"><span class="block-identity"><strong class="block-name"></strong><code class="block-id"></code></span><span class="badges"></span></button><span class="priority-label"></span><span class="reorder-buttons"><button class="move-up secondary" type="button" aria-label="Block nach oben verschieben">↑</button><button class="move-down secondary" type="button" aria-label="Block nach unten verschieben">↓</button></span></article></template>
+<template id="block-detail-template"><article class="block-detail"><div class="detail-heading"><div><p class="eyebrow">Block bearbeiten</p><h2 id="detail-title" class="block-name"></h2><code class="block-id"></code></div><div class="badges"></div></div><div class="domain-list"></div>
+<form class="add-domain-form" hidden><label>Website zusätzlich blockieren <span>Nur die Domain ohne <code>https://</code>, Pfad oder Port eingeben.</span></label><div class="input-row"><input class="domain-input" type="text" inputmode="url" autocomplete="off" placeholder="beispiel.de" maxlength="253" required><button type="submit">Domain blockieren</button></div><p class="append-note">Die geschützte Kinderergänzung wird getrennt gespeichert und kann von diesem Konto nicht entfernt werden.</p></form>
+<div class="add-domain-unavailable" hidden role="alert"><strong>Domain-Ergänzung nicht verfügbar</strong><p class="add-domain-unavailable-detail"></p><p>Bitte aktualisieren. Bleibt der Fehler bestehen, muss ein Elternteil die lokale Installation prüfen.</p></div>
+<form class="admin-form"><div class="admin-title"><div><strong>Regeldetails</strong><span>Änderungen benötigen eine Polkit-Administratoranmeldung.</span></div><label class="switch-label"><input class="admin-enabled" type="checkbox"> Aktiv</label></div><div class="form-grid"><label>Name<input class="admin-name" type="text" maxlength="120" required></label><label>Aktion<select class="admin-action"><option value="block">Blockieren</option><option value="allow">Erlauben</option></select></label><label>Priorität<input class="admin-priority" type="number" min="-1000" max="1000" required></label><label class="wide">Domains <span>Eine Domain pro Zeile</span><textarea class="admin-domains" rows="5"></textarea></label><label class="wide">URL-Patterns <span>Ein Pattern pro Zeile</span><textarea class="admin-patterns" rows="4"></textarea></label><label class="wide">URL-Regex <span><code>i:</code> oder <code>s:</code> voranstellen</span><textarea class="admin-regex" rows="4"></textarea></label><label class="wide">Domain-Ausnahmen <span>Eine Domain pro Zeile</span><textarea class="admin-exceptions" rows="4"></textarea></label>
+<fieldset class="schedule-editor wide"><legend>Zeitfenster</legend><p class="schedule-help">Ohne Zeitfenster gilt der Block durchgehend.</p><div class="schedule-toolbar"><label>Zeitzone <span>IANA-Zeitzone für alle Fenster</span><input class="admin-schedule-timezone" type="text" list="timezone-suggestions" maxlength="64" required></label><button class="secondary add-window" type="button">Zeitfenster hinzufügen</button></div><div class="schedule-empty">Keine Zeitfenster – der Block ist durchgehend aktiv.</div><div class="schedule-windows"></div><p class="schedule-overnight-note">Liegt die Endzeit vor oder gleich der Startzeit, endet das Fenster am Folgetag.</p></fieldset></div><div class="admin-buttons"><button type="submit">Block speichern</button><button class="danger delete-block" type="button">Block löschen</button></div></form></article></template>
+<script src="schedule-model.js"></script><script src="order-model.js"></script><script src="options.js"></script>
+</body></html>
