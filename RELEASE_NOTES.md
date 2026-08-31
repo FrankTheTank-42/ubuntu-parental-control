@@ -1,13 +1,5 @@
 # Versionshinweise
 
-## 0.5.3
-
-### Firefox und Chrome
-
-- Installiert `pkexec` als explizite Abhängigkeit im GitHub-Actions-Job, bevor
-  der Installer-Integrationstest ausgeführt wird. Damit entspricht der
-  schlanke CI-Runner der Polkit-Voraussetzung einer Ubuntu-Desktopinstallation.
-
 ## 0.5.2
 
 ### Firefox und Chrome

@@ -1,12 +1,13 @@
 ---
-description: Increment the browser extension version for every changed release artifact
+description: Increment the browser extension version only for user-visible UI changes
 alwaysApply: true
 ---
 
 # Extension versioning
 
-- Never rebuild or deliver changed Firefox or Chrome extension artifacts under an already used version.
-- Before a release build containing repository changes, increment the SemVer patch version.
+- Increment the SemVer patch version when a change affects the visible browser-extension UI.
+- Do not increment it for CI/workflow, test-only, documentation-only, refactoring, or backend changes without a UI change.
+- Verification builds without a UI change keep the current version.
 - Keep `browser-extension/manifest.json` and `browser-extension/manifest.chrome.json` on the same version.
-- Update version assertions, the project version in `docs/threat-model.md`, and `RELEASE_NOTES.md` in the same change.
+- For a UI version bump, update version assertions, the project version in `docs/threat-model.md`, and `RELEASE_NOTES.md` in the same change.
 - Run the relevant tests and `tools/build_extension.py`, then report the resulting version and artifact paths.
