@@ -1,5 +1,13 @@
 # Versionshinweise
 
+## 0.5.2
+
+### Firefox und Chrome
+
+- Verlegt die Prioritätsbearbeitung vollständig in die Blockübersicht und
+  entfernt das redundante Zahlenfeld aus den Regeldetails. Die Statistikleiste
+  sowie der doppelte Elternstatus entfallen zugunsten eines ruhigeren Kopfbereichs.
+
 ## 0.5.1
 
 ### Firefox und Chrome
@@ -21,10 +29,6 @@
 - Zeigt Domainziele in der Detailansicht nur noch als kompakte Liste. Das Feld
   „Domains hinzufügen“ wird erst bei Bedarf eingeblendet und nimmt auch direkt
   eingefügte Mehrfachlisten auf.
-- Verlegt die Prioritätsbearbeitung vollständig in die Blockübersicht und
-  entfernt das redundante Zahlenfeld aus den Regeldetails. Die Statistikleiste
-  sowie der doppelte Elternstatus entfallen zugunsten eines ruhigeren Kopfbereichs.
-
 ## 0.5.0
 
 ### Firefox und Chrome
