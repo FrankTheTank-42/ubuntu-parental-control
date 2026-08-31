@@ -357,13 +357,14 @@ class UserRulesTest(unittest.TestCase):
             peers: list[socket.socket] = []
             try:
                 slow = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                peers.append(slow)
                 slow.settimeout(1)
                 slow.connect(str(path))
                 slow.sendall(b'{"command":"')
-                peers.append(slow)
 
                 # A complete request must proceed while the first peer is idle.
                 legitimate = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                peers.append(legitimate)
                 legitimate.settimeout(1)
                 legitimate.connect(str(path))
                 legitimate.sendall(
@@ -374,16 +375,17 @@ class UserRulesTest(unittest.TestCase):
 
                 # Keep the second slot occupied with another incomplete peer.
                 second_slow = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                peers.append(second_slow)
                 second_slow.settimeout(1)
                 second_slow.connect(str(path))
                 second_slow.sendall(b'{"command":"')
-                peers.append(second_slow)
                 third = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                peers.append(third)
                 third.settimeout(0.5)
                 third.connect(str(path))
-                third.sendall(b'{"command":"status"}\n')
                 started = time.monotonic()
                 try:
+                    third.sendall(b'{"command":"status"}\n')
                     third.settimeout(0.5)
                     self.assertEqual(b"", third.recv(1))
                 except (ConnectionResetError, BrokenPipeError):
@@ -391,8 +393,6 @@ class UserRulesTest(unittest.TestCase):
                 except socket.timeout as exc:
                     self.fail(f"Limit-Ablehnung erfolgte nicht zügig: {exc}")
                 self.assertLess(time.monotonic() - started, 0.6)
-                third.close()
-                legitimate.close()
                 for peer in peers:
                     peer.close()
                 peers.clear()
