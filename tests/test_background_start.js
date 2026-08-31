@@ -92,7 +92,7 @@ assert.ok(blockedHtml.includes('<script src="blocked.js"></script>'));
 assert.ok(blockedSource.includes('type: "get_block_info"'));
 
 for (const manifest of [firefoxManifest, chromeManifest]) {
-  assert.equal(manifest.version, "0.5.2");
+  assert.equal(manifest.version, "0.5.3");
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
   assert.ok(manifest.permissions.includes("contextMenus"));
   assert.ok(manifest.permissions.includes("nativeMessaging"));
