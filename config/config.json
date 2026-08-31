@@ -4,6 +4,7 @@
   "managed_browsers": [
     "firefox"
   ],
+  "administrator_users": [],
   "restricted_users": [],
   "live_public_key_spki": null,
   "chrome_extension_id": null,

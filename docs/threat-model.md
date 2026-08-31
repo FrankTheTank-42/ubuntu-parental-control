@@ -1,6 +1,6 @@
 # Threat Model und Sicherheitsreview
 
-Stand: 31. August 2026 · Projektversion 0.5.2
+Stand: 31. August 2026 · Projektversion 0.5.3
 
 Dieses Dokument beschreibt die beabsichtigten Sicherheitsgarantien, die
 Vertrauensgrenzen und die derzeit bekannten Restrisiken von Ubuntu Parental
@@ -54,9 +54,8 @@ Netzwerk-Firewall und keine vollständige Gerätekontrolle.
   Regelsatz bildet den Fail-safe.
 - **Remote Website:** Ist vollständig unvertrauenswürdig und darf keine lokale
   Verwaltungsoperation ohne ausdrückliche Benutzerinteraktion auslösen.
-- **Sonstiges lokales Konto:** Ist weder automatisch Eltern- noch Kinderkonto.
-  Diese Rolle ist im aktuellen Protokoll noch nicht sauber abgebildet; siehe
-  Risiko R-01.
+- **Sonstiges lokales Konto:** Erhält explizit die Rolle `unauthorized` und
+  keinen Zugriff auf Eltern- oder Kinderoperationen.
 
 ## Datenfluss und Vertrauensgrenzen
 
@@ -139,6 +138,9 @@ wird nicht aus der Extensionnachricht, sondern aus `SO_PEERCRED` übernommen.
 - Live-Snapshots tragen eine ECDSA-P-256-Signatur; der öffentliche Schlüssel
   kommt aus Managed Storage.
 - SHA-256-Revisionen erkennen gemischte oder beschädigte Snapshots.
+- Persistent monotone Snapshot-Generationen verhindern signierte Replay- und
+  Rollback-Zustellungen gegenüber dem aktuellen Managed-Anker sowie innerhalb
+  einer laufenden Browser-Sitzung.
 - Ungültige Änderungen ersetzen weder den aktiven Daemonzustand noch die letzte
   gültige Sicherung.
 - Die Extension entfernt bei Aktivierungsfehlern dynamische Regeln und schaltet
@@ -168,64 +170,60 @@ wird nicht aus der Extensionnachricht, sondern aus `SO_PEERCRED` übernommen.
 
 ### R-01: Elternrolle wird negativ bestimmt
 
-**Priorität: hoch · Status: offen**
+**Priorität: hoch · Status: behoben in 0.5.3**
 
-Der Socket behandelt derzeit jedes Konto, das nicht in `restricted_users`
-steht, als Elternkontext. Ein später angelegtes normales Nicht-Admin-Konto kann
-dadurch die Elternansicht und über `base_rules` auch alle Einträge aus
-`user-domains.json` lesen. Administrative Änderungen bleiben zwar durch Polkit
-geschützt, aber Rollenanzeige und Vertraulichkeit sind zu weit gefasst.
+Vor 0.5.3 behandelte der Socket jedes Konto, das nicht in `restricted_users`
+stand, als Elternkontext. Ein später angelegtes normales Nicht-Admin-Konto
+konnte dadurch die Elternansicht und über `base_rules` auch alle Einträge aus
+`user-domains.json` lesen. Administrative Änderungen blieben zwar durch
+Polkit geschützt, aber Rollenanzeige und Vertraulichkeit waren zu weit gefasst.
 
-Geplante Maßnahme: Das Protokoll erhält eine explizite Rolle
-`restricted`, `administrator` oder `unauthorized`. Administratoren werden
-positiv anhand einer installierten Allowlist oder einer sicher geprüften
-Gruppenmitgliedschaft erkannt. `base_rules` und der vollständige
-Benutzerzustand werden nur für diese Rolle freigegeben.
+Umgesetzt: Das Protokoll liefert `restricted`, `administrator` oder
+`unauthorized`; Administratoren werden positiv über `administrator_users`
+geprüft. Regressionen: `tests/test_user_rules.py`.
 
 ### R-02: Parallele Elternänderungen können sich überschreiben
 
-**Priorität: hoch · Status: offen**
+**Priorität: hoch · Status: behoben in 0.5.3**
 
-Jede einzelne Ersetzung von `rules.json` ist atomar. Zwei gleichzeitig
-gestartete Editor-, CLI- oder Polkit-Operationen können aber denselben alten
-Stand lesen und anschließend nacheinander gültige Dateien schreiben. Die
-spätere Operation überschreibt dann unbemerkt die frühere Änderung. Das ist
-kein beschädigtes Teil-JSON, aber ein verlorenes Update.
+Schon vor 0.5.3 war jede einzelne Ersetzung von `rules.json` atomar. Zwei
+gleichzeitig gestartete Editor-, CLI- oder Polkit-Operationen konnten aber
+denselben alten Stand lesen und anschließend nacheinander gültige Dateien
+schreiben. Die spätere Operation überschrieb dann unbemerkt die frühere
+Änderung. Das war kein beschädigtes Teil-JSON, aber ein verlorenes Update.
 
-Geplante Maßnahme: Alle Basisregeländerungen verwenden eine gemeinsame
-rootgeschützte `flock`-Sperre. GUI-Anfragen enthalten zusätzlich die erwartete
-Basisrevision; ein veralteter Editorstand wird mit einer verständlichen
-Konfliktmeldung abgelehnt.
+Umgesetzt: CLI, Polkit-Helper und GUI verwenden eine gemeinsame
+rootgeschützte `flock`-Sperre und prüfen die erwartete Basisrevision.
+Regressionen einschließlich Thread-Konkurrenz: `tests/test_user_rules.py`,
+`tests/test_upcctl.py`.
 
 ### R-03: Veröffentlichung an zwei Browser ist nicht transaktional
 
-**Priorität: mittel · Status: offen**
+**Priorität: mittel · Status: behoben in 0.5.3**
 
-Chrome und Firefox besitzen getrennte Policy-Dateien. Schlägt die zweite
-Ersetzung nach erfolgreicher erster Ersetzung fehl, können vorübergehend zwei
-unterschiedliche, jeweils gültige Snapshots aktiv sein. Der Daemon übernimmt
-den neuen Zustand in diesem Fall nicht als aktiv, rollt die bereits
-geschriebene Policy aber derzeit nicht zurück.
+Chrome und Firefox besitzen getrennte Policy-Dateien. Vor 0.5.3 konnten bei
+einem Fehler der zweiten Ersetzung vorübergehend zwei unterschiedliche,
+jeweils gültige Snapshots aktiv sein. Der Daemon übernahm den neuen Zustand in
+diesem Fall zwar nicht als aktiv, rollte die bereits geschriebene Policy aber
+nicht zurück.
 
-Geplante Maßnahme: Sämtliche Zieldokumente werden zuerst vollständig erzeugt
-und geprüft. Der Publisher sichert die vorherigen Dokumente, rollt bei einem
-Teilfehler zurück und protokolliert einen deutlich sichtbaren inkonsistenten
-Zustand, falls auch das Rollback fehlschlägt.
+Umgesetzt: Verwaltete Ziele werden gesichert; Fehler nach einzelnen
+Publikationsschritten lösen best-effort Rollback aus. Regressionen:
+`tests/test_managed_policy.py`, `tests/test_user_rules.py`.
 
 ### R-04: Lokale Verfügbarkeit des Control-Sockets
 
-**Priorität: mittel · Status: offen**
+**Priorität: mittel · Status: behoben in 0.5.3**
 
-Der Socket ist mit Modus `0666` erreichbar, weil mehrere dynamisch erkannte
-Kinderkonten ohne gemeinsame Gruppe darauf zugreifen müssen. Der Server
-bearbeitet Verbindungen seriell und signiert Statusantworten über einen
-OpenSSL-Unterprozess. Ein lokales Konto kann durch viele langsame Verbindungen
-Live-Updates und den Editor verzögern. Bereits aktive DNR-Regeln und Managed
-Policies bleiben dabei erhalten.
+Der Socket ist weiterhin mit Modus `0666` erreichbar, weil mehrere dynamisch
+erkannte Kinderkonten ohne gemeinsame Gruppe darauf zugreifen müssen. Vor
+0.5.3 bearbeitete der Server Verbindungen seriell und signierte
+Statusantworten über einen OpenSSL-Unterprozess. Ein lokales Konto konnte
+daher durch langsame Verbindungen Live-Updates und den Editor verzögern.
+Bereits aktive DNR-Regeln und Managed Policies blieben dabei erhalten.
 
-Geplante Maßnahme: Begrenzte parallele Bearbeitung, Rate-Limits pro Peer-UID,
-eine Obergrenze offener Verbindungen und möglichst eine dedizierte
-Zugriffsgruppe statt eines weltbeschreibbaren Sockets.
+Umgesetzt: Parallele Worker, globale/per-UID-Limits, Timeouts sowie sichere
+EOF-/Worker-Start-Bereinigung. Regressionen: `tests/test_user_rules.py`.
 
 ### R-05: Restliche Dateipfad-Races
 
@@ -244,17 +242,17 @@ Symlink-, Eigentümer- und Austauschfälle abdecken.
 
 ### R-06: Lieferkette und unabhängige Prüfung
 
-**Priorität: mittel · Status: Prozesslücke**
+**Priorität: mittel · Status: teilweise behoben / Defense-in-depth**
 
-Das Projekt besitzt noch keine öffentliche CI-Pipeline, reproduzierbare
-Release-Nachweise oder unabhängige Sicherheitsprüfung. Der Installer prüft
+Die CI-Actions sind auf verifizierte Commit-SHAs gepinnt und werden getestet.
+Offen bleiben reproduzierbare Release-Nachweise, veröffentlichte Artefakt-Hashes
+und unabhängige Sicherheitsprüfung. Der Installer prüft
 Struktur, ID, Mindestversion und Berechtigungen des XPI, aber keinen separat
 veröffentlichten Projekt-Hash. Browser-Store-Signaturen und HTTPS reduzieren
 das Risiko, ersetzen jedoch kein überprüfbares Release-Verfahren.
 
-Geplante Maßnahme: GitHub Actions für alle Tests und statische Prüfungen,
-SHA-256-Prüfsummen für Release-Artefakte, dokumentierter Buildprozess und vor
-einer stabilen Version ein externes Review.
+Nächste Maßnahme: SHA-256-Prüfsummen, reproduzierbarer Buildprozess und
+externes Review vor einer stabilen Version.
 
 ### R-07: Zusätzliche systemd-Härtung
 
@@ -286,8 +284,9 @@ Der aktuelle Testbestand deckt bereits folgende Invarianten ab:
 - `tests/test-installer.sh`: installierte Modi, Policies, Native Manifeste,
   Dienstdateien sowie vollständige Deinstallation.
 
-Die offenen Risiken R-01 bis R-04 benötigen vor ihrer Behebung jeweils einen
-negativen Regressionstest, der den beschriebenen Fehler zunächst reproduziert.
+R-01 bis R-04 sind in 0.5.3 behoben und durch positive sowie negative
+Regressionstests abgesichert. R-05 und R-07 bleiben Defense-in-depth; R-06 ist
+für reproduzierbare Releases und externes Review weiterhin offen.
 
 ## Review-Regeln
 

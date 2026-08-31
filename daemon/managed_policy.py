@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -21,13 +22,50 @@ class PolicyPublicationError(RuntimeError):
     """The validated rules could not safely be published to a browser."""
 
 
+def capture_file(path: Path) -> tuple[bytes, int] | None:
+    if not path.exists():
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise PolicyPublicationError(f"Policy-Ziel ist keine sichere reguläre Datei: {path}")
+    info = path.stat()
+    return path.read_bytes(), stat.S_IMODE(info.st_mode)
+
+
+def restore_file(path: Path, captured: tuple[bytes, int] | None) -> None:
+    if captured is None:
+        path.unlink(missing_ok=True)
+        return
+    content, mode = captured
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.rollback.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(temporary, flags, mode)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def make_managed_data(
-    rules: dict[str, Any], live_public_key_spki: str | None = None
+    rules: dict[str, Any], live_public_key_spki: str | None = None, *, generation: int = 1
 ) -> dict[str, object]:
+    if type(generation) is not int or generation <= 0:
+        raise PolicyPublicationError("Snapshot-Generation muss eine positive Ganzzahl sein")
     dynamic_rule_count = 0
     for block in rules.get("blocks", []):
         exceptions = block.get("exceptions", {})
@@ -56,12 +94,14 @@ def make_managed_data(
         )
     revision = hashlib.sha256(encoded).hexdigest()
     snapshot = {
-        "protocol_version": 1,
+        "protocol_version": 2,
+        "generation": generation,
         "revision": revision,
         "rules": normalized,
     }
     managed_data: dict[str, object] = {
-        "protocol_version": 1,
+        "protocol_version": 2,
+        "generation": generation,
         "revision": revision,
         "snapshot_json": _canonical_json(snapshot),
     }
@@ -160,24 +200,39 @@ class ManagedPolicyPublisher:
         self.firefox_policy = firefox_policy
         self.chrome_policy = chrome_policy
 
-    def __call__(self, rules: dict[str, Any]) -> dict[str, object]:
+    def __call__(self, rules: dict[str, Any], *, generation: int = 1) -> dict[str, object]:
         public_key = self.config.get("live_public_key_spki")
         managed_data = make_managed_data(
             rules,
             str(public_key) if public_key is not None else None,
+            generation=generation,
         )
         browsers = self.config["managed_browsers"]
+        targets = []
         if "chrome" in browsers:
-            publish_chrome(
-                self.chrome_policy,
-                managed_data,
-                str(self.config["chrome_extension_id"]),
-                str(self.config["chrome_update_url"]),
-            )
+            targets.append(self.chrome_policy)
         if "firefox" in browsers:
-            # Firefox is written last: this is the already mandatory browser and
-            # its policy file also contains unrelated administrator settings.
-            publish_firefox(self.firefox_policy, managed_data)
+            targets.append(self.firefox_policy)
+        captured = {path: capture_file(path) for path in targets}
+        try:
+            if "chrome" in browsers:
+                publish_chrome(
+                    self.chrome_policy,
+                    managed_data,
+                    str(self.config["chrome_extension_id"]),
+                    str(self.config["chrome_update_url"]),
+                )
+            if "firefox" in browsers:
+                publish_firefox(self.firefox_policy, managed_data)
+        except Exception as publish_error:
+            rollback_errors = []
+            for path in reversed(targets):
+                try:
+                    restore_file(path, captured[path])
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{path}: {rollback_error}")
+            detail = f"; Rollback fehlgeschlagen: {'; '.join(rollback_errors)}" if rollback_errors else ""
+            raise PolicyPublicationError(f"Browser-Policy-Publikation fehlgeschlagen: {publish_error}{detail}") from publish_error
         return managed_data
 
 
@@ -188,6 +243,7 @@ def main() -> int:
     parser.add_argument("--firefox-policy", type=Path, required=True)
     parser.add_argument("--chrome-policy", type=Path, required=True)
     parser.add_argument("--user-domains", type=Path)
+    parser.add_argument("--snapshot-generation", type=Path)
     args = parser.parse_args()
 
     # Imports stay local so an installed copy can run beside daemon.py.
@@ -201,7 +257,14 @@ def main() -> int:
 
             user_store = UserDomainStore(args.user_domains)
             rules = user_store.merge(rules, user_store.load())
-        ManagedPolicyPublisher(config, args.firefox_policy, args.chrome_policy)(rules)
+        generation = 1
+        if args.snapshot_generation is not None:
+            from user_rules import SnapshotGenerationStore
+
+            generation = SnapshotGenerationStore(args.snapshot_generation).next()
+        ManagedPolicyPublisher(config, args.firefox_policy, args.chrome_policy)(
+            rules, generation=generation
+        )
     except (OSError, ValueError, PolicyPublicationError) as exc:
         print(f"Fehler: Managed Policy konnte nicht veröffentlicht werden: {exc}", file=os.sys.stderr)
         return 1

@@ -27,6 +27,7 @@ let updateChain = Promise.resolve();
 let contextMenuChain = Promise.resolve();
 let activeSnapshot = null;
 let activeSnapshotSource = null;
+let managedGenerationFloor = 0;
 let trustedLivePublicKey = null;
 let nativePort = null;
 let nativeConnected = false;
@@ -148,7 +149,9 @@ function enqueueUpdate(reason) {
     .then(() => refreshRules(reason))
     .catch(async (error) => {
       console.error("Ubuntu Parental Control: Regelaktivierung fehlgeschlagen", error);
+      if (activeSnapshot !== null) return activeSnapshot;
       await activateFailSafe();
+      return null;
     });
   return updateChain;
 }
@@ -214,6 +217,26 @@ async function activateManagedData(managed, reason, source = "managed") {
       managed.live_public_key_spki,
     );
   }
+  if (source === "native" && snapshot.generation < managedGenerationFloor) {
+    throw new Error(
+      `Native Snapshot-Generation ${snapshot.generation} liegt vor dem Managed-Anker ` +
+        `${managedGenerationFloor}`,
+    );
+  }
+  if (activeSnapshot !== null && snapshot.generation < activeSnapshot.generation) {
+    throw new Error(
+      `Snapshot-Rollback von Generation ${activeSnapshot.generation} auf ` +
+        `${snapshot.generation} abgelehnt`,
+    );
+  }
+  if (
+    activeSnapshot !== null &&
+    snapshot.generation === activeSnapshot.generation &&
+    snapshot.revision !== activeSnapshot.revision
+  ) {
+    throw new Error("Snapshot-Generation wurde mit abweichenden Regeln wiederverwendet");
+  }
+  if (source === "managed") managedGenerationFloor = snapshot.generation;
   if (activeSnapshot?.revision === snapshot.revision) {
     // A native write is intentionally returned both as the direct command
     // response and as a live file event. Treat the second delivery as an
@@ -278,28 +301,16 @@ function enqueueScheduleRecompile(reason) {
 }
 
 async function refreshRules(reason) {
-  if (reason === "managed-policy-change" && activeSnapshotSource === "native") {
-    console.info(
-      "Ubuntu Parental Control: verspätete Managed-Policy-Änderung ignoriert; " +
-        "verifizierter Native Snapshot bleibt aktiv",
-    );
-    return activeSnapshot;
-  }
   const managed = await api.storage.managed.get([
     "protocol_version",
+    "generation",
     "revision",
     "snapshot_json",
     "live_public_key_spki",
   ]);
-  // The managed-storage read can complete after a native activation that was
-  // queued later. Re-check the source here to prevent that older read from
-  // replacing the live snapshot.
-  if (reason === "managed-policy-change" && activeSnapshotSource === "native") {
-    console.info(
-      "Ubuntu Parental Control: veralteten Managed-Policy-Stand nach Native-Aktivierung verworfen",
-    );
-    return activeSnapshot;
-  }
+  // A delayed managed-storage read is safe: activateManagedData rejects every
+  // generation below the newest accepted snapshot. A genuinely newer managed
+  // policy must still be allowed to recover from a blocked Native channel.
   return activateManagedData(managed, reason);
 }
 
@@ -358,13 +369,19 @@ function handleNativeMessage(message) {
     updateChain = updateChain
       .catch(() => undefined)
       .then(() => activateManagedData(message.managed, "native-live-update", "native"))
-      .catch((error) => {
-        console.error("Ubuntu Parental Control: Native Snapshot abgelehnt", error);
-        return refreshRules("native-snapshot-fallback");
-      })
       .catch(async (error) => {
-        console.error("Ubuntu Parental Control: auch Managed-Fallback fehlgeschlagen", error);
-        await activateFailSafe();
+        console.error("Ubuntu Parental Control: Native Snapshot abgelehnt", error);
+        if (activeSnapshot !== null) return activeSnapshot;
+        try {
+          return await refreshRules("native-snapshot-fallback");
+        } catch (fallbackError) {
+          console.error(
+            "Ubuntu Parental Control: auch Managed-Fallback fehlgeschlagen",
+            fallbackError,
+          );
+          await activateFailSafe();
+          return null;
+        }
       });
     return;
   }
@@ -420,10 +437,10 @@ async function verifyNativeStatus(signedStatus, expectedNonce) {
     throw new Error(`Berechtigungsstatus ist kein JSON: ${error.message}`);
   }
   if (
-    status?.protocol_version !== 1 ||
+    status?.protocol_version !== 2 ||
     status.nonce !== expectedNonce ||
     !Number.isInteger(status.uid) ||
-    typeof status.restricted !== "boolean" ||
+    !["restricted", "administrator", "unauthorized"].includes(status.role) ||
     !Array.isArray(status.can_add_domains_to)
   ) {
     throw new Error("Berechtigungsstatus ist ungültig oder gehört zu einer anderen Anfrage");
@@ -451,6 +468,7 @@ async function handleUiMessage(message) {
   if (message.type === "get_ui_state") {
     let nativeStatus = null;
     let baseRules = null;
+    let baseRevision = null;
     let userDomains = null;
     if (activeSnapshot === null) {
       try {
@@ -466,11 +484,12 @@ async function handleUiMessage(message) {
       const signedStatus = await requestNative({ command: "status", nonce });
       nativeStatus = await verifyNativeStatus(signedStatus, nonce);
       verifiedNativeStatus = nativeStatus;
-      if (!nativeStatus.restricted) {
+      if (nativeStatus.role === "administrator") {
         const adminState = await requestNative({ command: "base_rules" });
         baseRules = adminState.rules;
+        baseRevision = adminState.base_revision;
         userDomains = adminState.user_domains;
-      } else {
+      } else if (nativeStatus.role === "restricted") {
         const childState = await requestNative({ command: "own_user_domains" });
         userDomains = childState.user_domains;
       }
@@ -481,6 +500,7 @@ async function handleUiMessage(message) {
       revision: activeSnapshot?.revision ?? null,
       rules: activeSnapshot?.rules ?? null,
       base_rules: baseRules,
+      base_revision: baseRevision,
       user_domains: userDomains,
       native: {
         connected: nativeConnected,
@@ -509,11 +529,15 @@ async function handleUiMessage(message) {
     };
   }
   if (message.type === "admin_apply") {
-    if (!verifiedNativeStatus || verifiedNativeStatus.restricted) {
+    if (!verifiedNativeStatus || verifiedNativeStatus.role !== "administrator") {
       throw new Error("Administrative Bearbeitung ist in diesem Konto nicht freigeschaltet");
     }
     const result = await requestNative(
-      { command: "admin_apply", rules: message.rules },
+      {
+        command: "admin_apply",
+        rules: message.rules,
+        expected_base_revision: message.expected_base_revision,
+      },
       ADMIN_REQUEST_TIMEOUT_MS,
     );
     if (result.managed) {
@@ -522,7 +546,7 @@ async function handleUiMessage(message) {
     return result;
   }
   if (message.type === "admin_remove_user_domain") {
-    if (!verifiedNativeStatus || verifiedNativeStatus.restricted) {
+    if (!verifiedNativeStatus || verifiedNativeStatus.role !== "administrator") {
       throw new Error("Administrative Bearbeitung ist in diesem Konto nicht freigeschaltet");
     }
     const result = await requestNative(

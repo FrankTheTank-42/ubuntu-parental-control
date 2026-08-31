@@ -36,6 +36,10 @@ Das erzeugt:
 Ausführliche, direkt für die Store-Einreichung nutzbare Versionshinweise stehen
 in `RELEASE_NOTES.md`.
 
+Die Extension-Version wird bei jeder Änderung am ausgelieferten
+Extension-Paket oder am Extension-/Daemon-Protokoll erhöht. Reine Änderungen
+an Daemon, CI oder Dokumentation benötigen keine neue Extension-Version.
+
 Firefox Release und Beta akzeptieren nur ein von Mozilla signiertes XPI. Chrome
 benötigt für eine dauerhaft stabile ID und automatische verwaltete Installation
 eine veröffentlichte oder selbst gehostete Extension samt HTTPS-Update-URL.
@@ -45,6 +49,10 @@ Nur Firefox installieren:
 ```bash
 sudo ./installer/install.sh --xpi /pfad/zur/signierten-datei.xpi
 ```
+
+Der aufrufende `sudo`-Benutzer wird automatisch als Administrator eingetragen.
+Weitere Elternkonten können mit `--administrator-user NAME` angegeben werden;
+die Option kann für mehrere Konten wiederholt werden.
 
 Ohne weitere Benutzeroption erkennt der Installer automatisch alle
 interaktiven Konten im normalen Ubuntu-UID-Bereich, die weder Mitglied der

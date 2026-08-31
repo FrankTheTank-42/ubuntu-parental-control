@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import copy
 import difflib
 import hashlib
@@ -14,8 +15,10 @@ import secrets
 import stat
 import sys
 import unicodedata
+from functools import wraps
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import contextmanager
 from typing import Any
 
 from rule_validator import DuplicateKeyError, RuleValidator, ValidationIssue, load_rules
@@ -32,6 +35,33 @@ VERSION_RE = re.compile(
 
 class CommandError(RuntimeError):
     pass
+
+
+@contextmanager
+def rules_mutation_lock(path: Path):
+    lock_path = path.with_name(f"{path.name}.lock")
+    if lock_path.is_symlink():
+        raise CommandError(f"Regelsperre darf kein symbolischer Link sein: {lock_path}")
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(lock_path, flags, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o077:
+            raise CommandError("Regelsperre ist nicht ausreichend geschützt")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def locked_mutation(function):
+    @wraps(function)
+    def wrapper(path: Path, *args, **kwargs):
+        with rules_mutation_lock(path):
+            return function(path, *args, **kwargs)
+    return wrapper
 
 
 def normalized_block_name(name: str) -> str:
@@ -311,7 +341,8 @@ def command_apply(target: Path, source: Path, dry_run: bool = False) -> None:
         print(difference or "Keine Änderungen.", end="" if difference else "\n")
         print("Vorschau abgeschlossen; die aktive Regeldatei wurde nicht verändert.")
         return
-    version = write_rules_atomic(target, rules)
+    with rules_mutation_lock(target):
+        version = write_rules_atomic(target, rules)
     if version:
         print(f"Vorherige Regelversion gesichert: {version}")
     print(f"Regeln atomar übernommen: {target}")
@@ -339,6 +370,7 @@ def command_history(path: Path) -> None:
         )
 
 
+@locked_mutation
 def command_rollback(
     path: Path,
     version: str,
@@ -364,6 +396,7 @@ def command_rollback(
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_set_profile(
     path: Path,
     *,
@@ -418,6 +451,7 @@ def command_remove_user_domain(
         print("Hinweis: Der Dienst veröffentlicht die Änderung automatisch.")
 
 
+@locked_mutation
 def command_add_domain(path: Path, block_id: str, domain: str) -> None:
     validate_domain(domain)
     rules = copy.deepcopy(load_valid_rules(path))
@@ -432,6 +466,7 @@ def command_add_domain(path: Path, block_id: str, domain: str) -> None:
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_remove_domain(path: Path, block_id: str, domain: str) -> None:
     validate_domain(domain)
     rules = copy.deepcopy(load_valid_rules(path))
@@ -445,6 +480,7 @@ def command_remove_domain(path: Path, block_id: str, domain: str) -> None:
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_create_block(
     path: Path,
     block_id: str,
@@ -493,6 +529,7 @@ def command_create_block(
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_set_block(
     path: Path,
     block_id: str,
@@ -521,6 +558,7 @@ def command_set_block(
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_delete_block(path: Path, block_id: str, confirmed: bool) -> None:
     if not confirmed:
         raise CommandError("Block-Löschung muss ausdrücklich mit --yes bestätigt werden")
@@ -532,6 +570,7 @@ def command_delete_block(path: Path, block_id: str, confirmed: bool) -> None:
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_update_string_matcher(
     path: Path,
     block_id: str,
@@ -564,6 +603,7 @@ def command_update_string_matcher(
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_update_url_regex(
     path: Path,
     block_id: str,
@@ -598,6 +638,7 @@ def weekly_rrule(days: str) -> str:
     return f"FREQ=WEEKLY;BYDAY={','.join(values)}"
 
 
+@locked_mutation
 def command_add_window(
     path: Path,
     block_id: str,
@@ -625,6 +666,7 @@ def command_add_window(
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_remove_window(path: Path, block_id: str, index: int) -> None:
     rules = copy.deepcopy(load_valid_rules(path))
     block = find_block(rules, block_id)
@@ -643,6 +685,7 @@ def command_remove_window(path: Path, block_id: str, index: int) -> None:
     print_activation_hint(path)
 
 
+@locked_mutation
 def command_set_schedule_timezone(path: Path, block_id: str, timezone: str) -> None:
     rules = copy.deepcopy(load_valid_rules(path))
     block = find_block(rules, block_id)
@@ -668,6 +711,7 @@ def command_list_windows(path: Path, block_id: str) -> None:
         print(f"{index}: {days} {window['start']}-{window['end']}")
 
 
+@locked_mutation
 def command_clear_schedule(path: Path, block_id: str, confirmed: bool) -> None:
     if not confirmed:
         raise CommandError("Entfernen des Zeitplans muss ausdrücklich mit --yes bestätigt werden")

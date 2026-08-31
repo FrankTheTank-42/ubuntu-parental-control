@@ -65,7 +65,8 @@ entry = data["ExtensionSettings"]["webfilter@ubuntu-parental-control.local"]
 assert entry["installation_mode"] == "force_installed"
 assert "/etc/firefox/policies/extensions/webfilter.xpi" in entry["install_url"]
 managed = data["3rdparty"]["Extensions"]["webfilter@ubuntu-parental-control.local"]
-assert managed["protocol_version"] == 1
+assert managed["protocol_version"] == 2
+assert managed["generation"] >= 1
 assert len(managed["revision"]) == 64
 assert managed["revision"] == json.loads(managed["snapshot_json"])["revision"]
 PY
@@ -81,7 +82,8 @@ assert policy["IncognitoModeAvailability"] == 1
 assert policy["BrowserGuestModeEnabled"] is False
 assert policy["DeveloperToolsAvailability"] == 2
 managed = policy["3rdparty"]["extensions"][extension_id]
-assert managed["protocol_version"] == 1
+assert managed["protocol_version"] == 2
+assert managed["generation"] >= 1
 PY
 
 test -f "$TEST_ROOT/etc/firefox/policies/extensions/webfilter.xpi"

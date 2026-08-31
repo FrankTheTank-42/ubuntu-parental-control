@@ -17,7 +17,13 @@ from typing import Any, Callable
 from control_server import ControlServer
 from managed_policy import ManagedPolicyPublisher, PolicyPublicationError
 from rule_validator import DuplicateKeyError, RuleValidator, ValidationIssue, load_rules
-from user_rules import EffectiveRulePublisher, LiveSnapshotSigner, UserDomainStore, UserRuleError
+from user_rules import (
+    EffectiveRulePublisher,
+    LiveSnapshotSigner,
+    SnapshotGenerationStore,
+    UserDomainStore,
+    UserRuleError,
+)
 
 
 LOGGER = logging.getLogger("ubuntu-parental-control")
@@ -54,16 +60,19 @@ def load_config(path: Path) -> dict[str, object]:
             raise ValueError("chrome_extension_id muss aus 32 Zeichen a-p bestehen")
         if not isinstance(update_url, str) or not update_url.startswith("https://"):
             raise ValueError("chrome_update_url muss eine HTTPS-URL sein")
-    restricted_users = data.get("restricted_users")
-    if (
-        not isinstance(restricted_users, list)
-        or len(restricted_users) != len(set(restricted_users))
-        or any(
-            not isinstance(uid, int) or isinstance(uid, bool) or uid <= 0 or uid > 2**32 - 1
-            for uid in restricted_users
-        )
-    ):
-        raise ValueError("restricted_users muss eindeutige positive Linux-UIDs enthalten")
+    for field in ("administrator_users", "restricted_users"):
+        users = data.get(field)
+        if (
+            not isinstance(users, list)
+            or len(users) != len(set(users))
+            or any(
+                not isinstance(uid, int) or isinstance(uid, bool) or uid <= 0 or uid > 2**32 - 1
+                for uid in users
+            )
+        ):
+            raise ValueError(f"{field} muss eindeutige positive Linux-UIDs enthalten")
+    if set(data["administrator_users"]) & set(data["restricted_users"]):
+        raise ValueError("Administrator- und eingeschränkte UIDs müssen getrennt sein")
     public_key = data.get("live_public_key_spki")
     if public_key is not None:
         try:
@@ -200,6 +209,7 @@ def main() -> int:
     parser.add_argument("--live-snapshot", type=Path)
     parser.add_argument("--control-socket", type=Path)
     parser.add_argument("--live-signing-key", type=Path)
+    parser.add_argument("--snapshot-generation", type=Path)
     parser.add_argument(
         "--firefox-policy",
         type=Path,
@@ -244,10 +254,12 @@ def main() -> int:
         args.live_snapshot,
         args.control_socket,
         args.live_signing_key,
+        args.snapshot_generation,
     )
     if any(optional_service_paths) and not all(optional_service_paths):
         LOGGER.error(
-            "--user-domains, --live-snapshot, --control-socket und --live-signing-key "
+            "--user-domains, --live-snapshot, --control-socket, --live-signing-key und "
+            "--snapshot-generation "
             "müssen gemeinsam gesetzt werden"
         )
         return 1
@@ -264,6 +276,7 @@ def main() -> int:
             policy_publisher,
             args.live_snapshot,
             LiveSnapshotSigner(args.live_signing_key),
+            SnapshotGenerationStore(args.snapshot_generation),
         )
         publisher = effective_publisher
     store = RuleStore(args.rules, args.last_good, publisher)

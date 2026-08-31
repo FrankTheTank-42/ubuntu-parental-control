@@ -86,7 +86,8 @@ globalThis.UPC_RULE_ENGINE = (() => {
   }
 
   async function parseManagedSnapshot(managed) {
-    assert(managed && managed.protocol_version === 1, "Managed-Policy-Protokoll fehlt oder ist unbekannt");
+    assert(managed && managed.protocol_version === 2, "Managed-Policy-Protokoll fehlt oder ist unbekannt");
+    assert(Number.isSafeInteger(managed.generation) && managed.generation > 0, "Snapshot-Generation ist ungültig");
     assert(typeof managed.snapshot_json === "string", "Managed-Regelsnapshot fehlt");
     assert(managed.snapshot_json.length <= 1_000_000, "Managed-Regelsnapshot ist zu groß");
     let snapshot;
@@ -95,7 +96,11 @@ globalThis.UPC_RULE_ENGINE = (() => {
     } catch (error) {
       throw new Error(`Managed-Regelsnapshot ist kein JSON: ${error.message}`);
     }
-    assert(snapshot && snapshot.protocol_version === 1, "Snapshot-Protokoll ist unbekannt");
+    assert(snapshot && snapshot.protocol_version === 2, "Snapshot-Protokoll ist unbekannt");
+    assert(
+      Number.isSafeInteger(snapshot.generation) && snapshot.generation === managed.generation,
+      "Snapshot-Generation und Policy stimmen nicht überein",
+    );
     assert(typeof snapshot.revision === "string" && /^[0-9a-f]{64}$/.test(snapshot.revision), "Revision ist ungültig");
     assert(snapshot.revision === managed.revision, "Revision und Snapshot stimmen nicht überein");
     assert(snapshot.rules && typeof snapshot.rules === "object", "Regeln fehlen im Snapshot");

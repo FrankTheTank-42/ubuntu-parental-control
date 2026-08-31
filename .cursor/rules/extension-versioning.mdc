@@ -1,13 +1,12 @@
 ---
-description: Increment the browser extension version only for user-visible UI changes
+description: Keep shipped extension and protocol versions synchronized
 alwaysApply: true
 ---
 
 # Extension versioning
 
-- Increment the SemVer patch version when a change affects the visible browser-extension UI.
-- Do not increment it for CI/workflow, test-only, documentation-only, refactoring, or backend changes without a UI change.
-- Verification builds without a UI change keep the current version.
+- Increment the SemVer version for every change to the shipped browser-extension package or to the extension/daemon protocol, including non-UI behavior and security fixes.
+- Do not increment it for changes confined to the daemon (without changing the shipped package or protocol), CI/workflow, tests, documentation, or other non-shipped artifacts.
 - Keep `browser-extension/manifest.json` and `browser-extension/manifest.chrome.json` on the same version.
-- For a UI version bump, update version assertions, the project version in `docs/threat-model.md`, and `RELEASE_NOTES.md` in the same change.
+- For every shipped-package/protocol bump, update version assertions, the project version in `docs/threat-model.md`, and `RELEASE_NOTES.md` in the same change.
 - Run the relevant tests and `tools/build_extension.py`, then report the resulting version and artifact paths.

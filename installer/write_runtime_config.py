@@ -20,6 +20,7 @@ def main() -> None:
     parser.add_argument("--chrome-extension-id")
     parser.add_argument("--chrome-update-url", default="https://clients2.google.com/service/update2/crx")
     parser.add_argument("--restricted-uid", action="append", type=int, default=[])
+    parser.add_argument("--administrator-uid", action="append", type=int, default=[])
     parser.add_argument("--live-public-key-spki", required=True)
     args = parser.parse_args()
 
@@ -60,6 +61,20 @@ def main() -> None:
     ):
         raise ValueError("Restricted-User-UIDs müssen eindeutig und positiv sein")
     config["restricted_users"] = sorted(restricted_uids)
+    administrator_uids = args.administrator_uid
+    if not administrator_uids and args.output.exists():
+        with args.output.open("r", encoding="utf-8") as handle:
+            existing = json.load(handle)
+        existing_uids = existing.get("administrator_users", [])
+        if isinstance(existing_uids, list):
+            administrator_uids = existing_uids
+    if (
+        len(administrator_uids) != len(set(administrator_uids))
+        or any(uid <= 0 or uid > 2**32 - 1 for uid in administrator_uids)
+        or set(administrator_uids) & set(restricted_uids)
+    ):
+        raise ValueError("Administrator-UIDs müssen eindeutig, positiv und von Kinder-UIDs getrennt sein")
+    config["administrator_users"] = sorted(administrator_uids)
     config["live_public_key_spki"] = args.live_public_key_spki
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

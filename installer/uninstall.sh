@@ -269,6 +269,8 @@ rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/rules.last-known-good.j
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json)"
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json.lock)"
 rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/live-signing-key.pem)"
+rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/snapshot-generation)"
+rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/snapshot-generation.lock)"
 rm -f -- "$(prefix_path /usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json)"
 rm -f -- "$(prefix_path /etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json)"
 rm -f -- "$(prefix_path /usr/share/polkit-1/actions/local.ubuntu-parental-control.policy)"

@@ -7,6 +7,7 @@ import logging
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -118,6 +119,49 @@ class ManagedPolicyTest(unittest.TestCase):
         ]
         with self.assertRaisesRegex(PolicyPublicationError, "nicht verlustfrei"):
             make_managed_data(rules)
+
+    def test_snapshot_generation_must_be_positive_integer(self) -> None:
+        for generation in (0, -1, True, False):
+            with self.subTest(generation=generation):
+                with self.assertRaises(PolicyPublicationError):
+                    make_managed_data(self.example, generation=generation)
+
+    def test_partial_browser_publication_rolls_back_all_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            firefox = root / "firefox.json"
+            chrome = root / "chrome.json"
+            firefox.write_text('{"policies":{"Keep":true}}\n', encoding="utf-8")
+            chrome.write_text('{"Keep":true}\n', encoding="utf-8")
+            before = {path: path.read_bytes() for path in (firefox, chrome)}
+            config = {
+                "managed_browsers": ["firefox", "chrome"],
+                "chrome_extension_id": CHROME_ID,
+                "chrome_update_url": "https://clients2.google.com/service/update2/crx",
+            }
+            with patch("managed_policy.publish_firefox", side_effect=PolicyPublicationError("injected")):
+                with self.assertRaises(PolicyPublicationError):
+                    ManagedPolicyPublisher(config, firefox, chrome)(self.example)
+            self.assertEqual(before[firefox], firefox.read_bytes())
+            self.assertEqual(before[chrome], chrome.read_bytes())
+
+    def test_rollback_errors_do_not_hide_original_or_stop_other_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            firefox = root / "firefox.json"
+            chrome = root / "chrome.json"
+            firefox.write_text('{"policies":{}}\n', encoding="utf-8")
+            chrome.write_text('{}\n', encoding="utf-8")
+            config = {
+                "managed_browsers": ["firefox", "chrome"],
+                "chrome_extension_id": CHROME_ID,
+                "chrome_update_url": "https://clients2.google.com/service/update2/crx",
+            }
+            with patch("managed_policy.publish_firefox", side_effect=PolicyPublicationError("original")), \
+                patch("managed_policy.restore_file", side_effect=OSError("rollback")) as restore:
+                with self.assertRaisesRegex(PolicyPublicationError, "Rollback fehlgeschlagen"):
+                    ManagedPolicyPublisher(config, firefox, chrome)(self.example)
+                self.assertEqual(2, restore.call_count)
 
     def test_publication_failure_is_retried_without_another_file_change(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

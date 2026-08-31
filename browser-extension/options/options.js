@@ -106,7 +106,7 @@ function renderConnection(native) {
     return;
   }
   connection.classList.add("connected");
-  if (native.status.restricted) {
+  if (native.status.role === "restricted") {
     title.textContent = "Eingeschränktes Konto verbunden";
     detail.textContent = "Du kannst jede Blockierliste um Domains ergänzen. Löschen und Lockern ist nicht möglich.";
     document.querySelector("#view-mode").textContent = "Kinderansicht";
@@ -301,8 +301,15 @@ async function runAdminOperation(operation, successMessage) {
 }
 
 async function applyAdminRules(rules, successMessage) {
+  if (typeof currentState?.base_revision !== "string") {
+    throw new Error("Aktuelle Basisrevision fehlt; bitte Regeln neu laden.");
+  }
   await runAdminOperation(
-    () => send({ type: "admin_apply", rules }),
+    () => send({
+      type: "admin_apply",
+      rules,
+      expected_base_revision: currentState.base_revision,
+    }),
     successMessage,
   );
 }
@@ -318,7 +325,7 @@ async function applyContextDomain(state, addition) {
   if (!state.native.connected || !state.native.status) {
     throw new Error(nativeFailure(state.native).detail);
   }
-  if (state.native.status.restricted) {
+  if (state.native.status.role === "restricted") {
     setAdminBusy(true);
     showMessage(`${addition.domain} wird zu „${block.name}“ hinzugefügt …`);
     try {
@@ -480,8 +487,8 @@ function setupAdminForm(card, block, baseRules, editable, profileTimezone) {
 }
 
 function modes(state) {
-  const admin = Boolean(state.native.connected && state.native.status && !state.native.status.restricted);
-  const child = Boolean(state.native.connected && state.native.status?.restricted);
+  const admin = Boolean(state.native.connected && state.native.status?.role === "administrator");
+  const child = Boolean(state.native.connected && state.native.status?.role === "restricted");
   return { admin, child };
 }
 

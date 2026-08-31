@@ -9,6 +9,7 @@ import os
 import socket
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -31,12 +32,15 @@ from native_host import (  # noqa: E402
 )
 from rule_validator import load_rules  # noqa: E402
 from upcctl import CommandError  # noqa: E402
+from upcctl import rules_mutation_lock, write_rules_atomic  # noqa: E402
 from user_rules import (  # noqa: E402
     EffectiveRulePublisher,
     LiveSnapshotSigner,
+    SnapshotGenerationStore,
     UserDomainStore,
     UserRuleError,
     empty_user_rules,
+    object_revision,
 )
 
 
@@ -53,6 +57,7 @@ class UserRulesTest(unittest.TestCase):
             "chrome_extension_id": None,
             "chrome_update_url": None,
             "restricted_users": restricted_users,
+            "administrator_users": [uid for uid in [os.getuid() or 1000] if uid not in restricted_users],
             "live_public_key_spki": base64.b64encode(b"test-public-key").decode("ascii"),
         }
         store = UserDomainStore(root / "user-domains.json")
@@ -72,6 +77,32 @@ class UserRulesTest(unittest.TestCase):
             root / "live-snapshot.json",
             FakeSigner(),
         )
+
+    def test_snapshot_generation_is_persistent_and_monotone(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "generation"
+            store = SnapshotGenerationStore(path)
+            self.assertEqual(1, store.next())
+            self.assertEqual(2, SnapshotGenerationStore(path).next())
+            path.write_text("1\n", encoding="ascii")
+            self.assertEqual(2, store.next())
+
+    def test_live_write_failure_restores_managed_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            uid = os.getuid() or 1000
+            publisher = self.coordinator(root, [uid])
+            publisher(self.example)
+            firefox = root / "policies.json"
+            snapshot = root / "live-snapshot.json"
+            before_policy, before_snapshot = firefox.read_bytes(), snapshot.read_bytes()
+            changed = copy.deepcopy(self.example)
+            changed["blocks"][0]["enabled"] = False
+            with patch("user_rules._atomic_write", side_effect=OSError("live write")):
+                with self.assertRaises(OSError):
+                    publisher(changed)
+            self.assertEqual(before_policy, firefox.read_bytes())
+            self.assertEqual(before_snapshot, snapshot.read_bytes())
 
     def test_restricted_user_can_append_to_every_blocking_rule(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -144,7 +175,7 @@ class UserRulesTest(unittest.TestCase):
                 signed_status = server.dispatch(uid, {"command": "status", "nonce": "a" * 32})
                 status = json.loads(signed_status["authorization_json"])
                 self.assertEqual(uid, status["uid"])
-                self.assertTrue(status["restricted"])
+                self.assertEqual("restricted", status["role"])
                 self.assertEqual("a" * 32, status["nonce"])
                 self.assertEqual(
                     ["social-school-hours", "self-blocked-sites"],
@@ -157,6 +188,15 @@ class UserRulesTest(unittest.TestCase):
                 )
                 with self.assertRaises(UserRuleError):
                     server.dispatch(uid, {"command": "base_rules"})
+                unauthorized_uid = uid + 100
+                unauthorized_status = json.loads(
+                    server.dispatch(
+                        unauthorized_uid, {"command": "status", "nonce": "b" * 32}
+                    )["authorization_json"]
+                )
+                self.assertEqual("unauthorized", unauthorized_status["role"])
+                with self.assertRaises(UserRuleError):
+                    server.dispatch(unauthorized_uid, {"command": "base_rules"})
                 publication = server.dispatch(uid, {"command": "publication"})
                 self.assertEqual(1, publication["serial"])
                 self.assertRegex(publication["base_revision"], r"^[0-9a-f]{64}$")
@@ -204,7 +244,7 @@ class UserRulesTest(unittest.TestCase):
         self.assertEqual({"event": "snapshot", "managed": newer}, event)
 
     def test_admin_waits_for_matching_daemon_publication(self) -> None:
-        expected_snapshot = {"protocol_version": 1, "live_signature": "signed"}
+        expected_snapshot = {"protocol_version": 2, "generation": 4, "live_signature": "signed"}
         publications = [
             {"serial": 3, "base_revision": "old", "user_revision": "users"},
             {"serial": 4, "base_revision": "expected", "user_revision": "users"},
@@ -259,7 +299,11 @@ class UserRulesTest(unittest.TestCase):
             changed = copy.deepcopy(self.example)
             changed["blocks"][0]["enabled"] = False
             result = apply_request(
-                {"command": "apply_rules", "rules": changed},
+                {
+                    "command": "apply_rules",
+                    "rules": changed,
+                    "expected_base_revision": object_revision(self.example),
+                },
                 target,
                 user_domains,
             )
@@ -267,7 +311,22 @@ class UserRulesTest(unittest.TestCase):
             self.assertFalse(load_rules(target)["blocks"][0]["enabled"])
             with self.assertRaises(CommandError):
                 apply_request(
-                    {"command": "apply_rules", "rules": changed, "target": "/etc/shadow"},
+                    {
+                        "command": "apply_rules",
+                        "rules": changed,
+                        "expected_base_revision": object_revision(changed),
+                        "target": "/etc/shadow",
+                    },
+                    target,
+                    user_domains,
+                )
+            with self.assertRaises(CommandError):
+                apply_request(
+                    {
+                        "command": "apply_rules",
+                        "rules": changed,
+                        "expected_base_revision": "0" * 64,
+                    },
                     target,
                     user_domains,
                 )
@@ -283,6 +342,157 @@ class UserRulesTest(unittest.TestCase):
             )
             self.assertRegex(result["user_revision"], r"^[0-9a-f]{64}$")
             self.assertEqual({}, store.load()["users"])
+
+    def test_control_server_slow_peers_are_bounded_and_released(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            publisher = self.coordinator(root, [])
+            publisher(self.example)
+            path = root / "control.sock"
+            server = ControlServer(path, publisher)
+            try:
+                server.start()
+            except PermissionError as exc:
+                self.skipTest(f"AF_UNIX-Bind ist in dieser Sandbox nicht erlaubt: {exc}")
+            peers: list[socket.socket] = []
+            try:
+                slow = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                slow.settimeout(1)
+                slow.connect(str(path))
+                slow.sendall(b'{"command":"')
+                peers.append(slow)
+
+                # A complete request must proceed while the first peer is idle.
+                legitimate = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                legitimate.settimeout(1)
+                legitimate.connect(str(path))
+                legitimate.sendall(
+                    b'{"id":1,"command":"status","nonce":"' + b"n" * 32 + b'"}\n'
+                )
+                response = legitimate.recv(4096)
+                self.assertIn(b'"ok":true', response)
+
+                # Keep the second slot occupied with another incomplete peer.
+                second_slow = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                second_slow.settimeout(1)
+                second_slow.connect(str(path))
+                second_slow.sendall(b'{"command":"')
+                peers.append(second_slow)
+                third = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                third.settimeout(0.5)
+                third.connect(str(path))
+                third.sendall(b'{"command":"status"}\n')
+                started = time.monotonic()
+                try:
+                    third.settimeout(0.5)
+                    self.assertEqual(b"", third.recv(1))
+                except (ConnectionResetError, BrokenPipeError):
+                    pass
+                except socket.timeout as exc:
+                    self.fail(f"Limit-Ablehnung erfolgte nicht zügig: {exc}")
+                self.assertLess(time.monotonic() - started, 0.6)
+                third.close()
+                legitimate.close()
+                for peer in peers:
+                    peer.close()
+                peers.clear()
+                deadline = time.monotonic() + 1
+                while time.monotonic() < deadline:
+                    with server._connection_lock:
+                        if server._connections_total == 0:
+                            break
+                    time.sleep(0.01)
+                with server._connection_lock:
+                    self.assertEqual(0, server._connections_total)
+                    self.assertEqual({}, server._connections_by_uid)
+            finally:
+                for peer in peers:
+                    peer.close()
+                server.close()
+            self.assertFalse(path.exists())
+
+    def test_control_server_start_closes_listener_on_setup_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            publisher = self.coordinator(root, [])
+            server = ControlServer(root / "control.sock", publisher)
+            listener = patch("control_server.socket.socket").start()
+            fake_listener = listener.return_value
+            fake_listener.bind.side_effect = OSError("injected bind failure")
+            self.addCleanup(patch.stopall)
+            with self.assertRaises(OSError):
+                server.start()
+            fake_listener.close.assert_called_once_with()
+            self.assertIsNone(server._socket)
+            self.assertIsNone(server._thread)
+            self.assertFalse(server.path.exists())
+
+    def test_control_server_worker_start_failure_releases_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            publisher = self.coordinator(root, [])
+            server = ControlServer(root / "control.sock", publisher)
+            connection, peer = socket.socketpair()
+            server._connections_total = 0
+            with patch("control_server.threading.Thread") as thread_type:
+                thread_type.return_value.start.side_effect = RuntimeError("thread limit")
+                class FakeListener:
+                    def accept(self):
+                        server._stop.set()
+                        return connection, None
+
+                server._socket = FakeListener()
+                with patch.object(server, "_peer_uid", return_value=os.getuid()):
+                    server._serve()
+            self.assertEqual(0, server._connections_total)
+            self.assertEqual({}, server._connections_by_uid)
+            connection.close()
+            peer.close()
+
+    def test_admin_apply_rejects_stale_revision_after_overlapping_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "rules.json"
+            domains = root / "user-domains.json"
+            target.write_text(json.dumps(self.example), encoding="utf-8")
+            UserDomainStore(domains).write(empty_user_rules())
+            expected = object_revision(self.example)
+            competing = copy.deepcopy(self.example)
+            competing["blocks"][0]["enabled"] = False
+            requested = copy.deepcopy(self.example)
+            requested["blocks"][0]["name"] = "Concurrent admin change"
+            entered = threading.Event()
+            release = threading.Event()
+
+            def competitor() -> None:
+                with rules_mutation_lock(target):
+                    write_rules_atomic(target, competing)
+                    entered.set()
+                    release.wait(2)
+
+            thread = threading.Thread(target=competitor)
+            thread.start()
+            self.assertTrue(entered.wait(2))
+            result: list[BaseException] = []
+
+            def admin() -> None:
+                try:
+                    apply_request(
+                        {"command": "apply_rules", "rules": requested, "expected_base_revision": expected},
+                        target,
+                        domains,
+                    )
+                except BaseException as exc:  # capture worker failure for assertion
+                    result.append(exc)
+
+            admin_thread = threading.Thread(target=admin)
+            admin_thread.start()
+            time.sleep(0.05)
+            release.set()
+            thread.join(2)
+            admin_thread.join(2)
+            self.assertTrue(result and isinstance(result[0], CommandError))
+            self.assertFalse(load_rules(target)["blocks"][0]["enabled"])
 
 
 if __name__ == "__main__":

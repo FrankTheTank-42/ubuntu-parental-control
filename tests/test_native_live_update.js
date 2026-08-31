@@ -32,18 +32,19 @@ function stableStringify(value) {
   return JSON.stringify(value);
 }
 
-function managed(rules, publicKeySpki) {
+function managed(rules, publicKeySpki, generation) {
   const revision = cryptoModule.createHash("sha256").update(stableStringify(rules)).digest("hex");
   return {
-    protocol_version: 1,
+    protocol_version: 2,
+    generation,
     revision,
-    snapshot_json: JSON.stringify({ protocol_version: 1, revision, rules }),
+    snapshot_json: JSON.stringify({ protocol_version: 2, generation, revision, rules }),
     live_public_key_spki: publicKeySpki,
   };
 }
 
-async function signedManaged(rulesValue, keyPair, publicKeySpki) {
-  const value = managed(rulesValue, publicKeySpki);
+async function signedManaged(rulesValue, keyPair, publicKeySpki, generation) {
+  const value = managed(rulesValue, publicKeySpki, generation);
   const signature = await cryptoModule.webcrypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },
     keyPair.privateKey,
@@ -93,7 +94,8 @@ async function main() {
     await cryptoModule.webcrypto.subtle.exportKey("spki", keyPair.publicKey),
   ).toString("base64");
   let statusSigningKey = keyPair.privateKey;
-  let statusRestricted = true;
+  let statusRole = "restricted";
+  let nextGeneration = 2;
   let adminRequestCount = 0;
   let lastAddedManaged = null;
   const nativePort = {
@@ -108,6 +110,8 @@ async function main() {
       if (request.command === "base_rules") {
         respond({
           rules: rules(["example.com"]),
+          base_revision: cryptoModule.createHash("sha256")
+            .update(stableStringify(rules(["example.com"]))).digest("hex"),
           user_domains: { format_version: 1, users: {} },
         });
         return;
@@ -126,6 +130,7 @@ async function main() {
           rules(["example.com", request.domain]),
           keyPair,
           publicKeySpki,
+          nextGeneration++,
         );
         respond({
           block_id: request.block_id,
@@ -138,17 +143,22 @@ async function main() {
         adminRequestCount += 1;
         respond({
           applied: true,
-          managed: await signedManaged(request.rules, keyPair, publicKeySpki),
+          managed: await signedManaged(
+            request.rules,
+            keyPair,
+            publicKeySpki,
+            nextGeneration++,
+          ),
         });
         return;
       }
       if (request.command !== "status") return;
       const authorizationJson = JSON.stringify({
-        protocol_version: 1,
+        protocol_version: 2,
         nonce: request.nonce,
         uid: 1001,
-        restricted: statusRestricted,
-        can_add_domains_to: statusRestricted ? ["self-blocked-sites"] : [],
+        role: statusRole,
+        can_add_domains_to: statusRole === "restricted" ? ["self-blocked-sites"] : [],
       });
       const signature = await cryptoModule.webcrypto.subtle.sign(
         { name: "ECDSA", hash: "SHA-256" },
@@ -167,7 +177,7 @@ async function main() {
   const createdTabs = [];
   const reloadedTabs = [];
   let optionsPageOpenCount = 0;
-  let currentManaged = managed(rules(["example.com"]), publicKeySpki);
+  let currentManaged = managed(rules(["example.com"]), publicKeySpki, 1);
   const api = {
     alarms: { create() {}, onAlarm: hook() },
     declarativeNetRequest: {
@@ -287,7 +297,7 @@ async function main() {
   });
   assert.equal(uiState.ok, true);
   assert.equal(nativePort.onMessage.listeners.length, 1);
-  assert.equal(uiState.result.native.status.restricted, true);
+  assert.equal(uiState.result.native.status.role, "restricted");
   assert.deepEqual(
     Array.from(uiState.result.user_domains.users["1001"]["self-blocked-sites"]),
     ["child.example"],
@@ -368,12 +378,13 @@ async function main() {
   assert.match(rejectedUiState.result.native.error, /Berechtigungssignatur/);
   statusSigningKey = keyPair.privateKey;
 
-  statusRestricted = false;
+  statusRole = "administrator";
   const parentUiState = await new Promise((resolve) => {
     runtimeMessage({ type: "get_ui_state" }, null, resolve);
   });
   assert.equal(parentUiState.ok, true);
-  assert.equal(parentUiState.result.native.status.restricted, false);
+  assert.equal(parentUiState.result.native.status.role, "administrator");
+  assert.match(parentUiState.result.base_revision, /^[0-9a-f]{64}$/);
   assert.equal(parentUiState.result.base_rules.blocks.length, 1);
   const acceptedAdminEdit = await new Promise((resolve) => {
     runtimeMessage({ type: "admin_apply", rules: rules(["admin.example"]) }, null, resolve);
@@ -388,9 +399,32 @@ async function main() {
     rules(["example.com", "school.example"]),
     keyPair,
     publicKeySpki,
+    nextGeneration++,
   );
   for (const listener of nativePort.onMessage.listeners) {
     listener({ event: "snapshot", managed: liveManaged });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(dynamicRules.length, 2);
+  assert.equal(dynamicRules[1].condition.requestDomains.join(","), "school.example");
+
+  // A previously valid signed snapshot must not roll back the active rules.
+  for (const listener of nativePort.onMessage.listeners) {
+    listener({ event: "snapshot", managed: lastAddedManaged });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(dynamicRules.length, 2);
+  assert.equal(dynamicRules[1].condition.requestDomains.join(","), "school.example");
+
+  // Reusing the current generation with different signed content is rejected.
+  const reusedGeneration = await signedManaged(
+    rules(["generation-reuse.example"]),
+    keyPair,
+    publicKeySpki,
+    nextGeneration - 1,
+  );
+  for (const listener of nativePort.onMessage.listeners) {
+    listener({ event: "snapshot", managed: reusedGeneration });
   }
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(dynamicRules.length, 2);
@@ -414,13 +448,14 @@ async function main() {
       ["sign", "verify"],
     ),
     publicKeySpki,
+    nextGeneration++,
   );
   for (const listener of nativePort.onMessage.listeners) {
     listener({ event: "snapshot", managed: forgedManaged });
   }
   await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.equal(dynamicRules.length, 1);
-  assert.equal(dynamicRules[0].condition.requestDomains.join(","), "example.com");
+  assert.equal(dynamicRules.length, 2);
+  assert.equal(dynamicRules[1].condition.requestDomains.join(","), "school.example");
   console.log("Native Live-Regelupdate erfolgreich getestet.");
 }
 

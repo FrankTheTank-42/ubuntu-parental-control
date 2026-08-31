@@ -1,8 +1,19 @@
 {
   "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "generation",
+    "revision",
+    "snapshot_json"
+  ],
   "properties": {
     "protocol_version": {
       "type": "integer"
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1
     },
     "revision": {
       "type": "string"

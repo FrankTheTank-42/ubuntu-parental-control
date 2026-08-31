@@ -11,9 +11,10 @@ chrome_update_url="https://clients2.google.com/service/update2/crx"
 start_service=true
 restricted_uids=()
 restricted_users_explicit=false
+administrator_uids=()
 
 usage() {
-  echo "Verwendung: sudo $0 --xpi PFAD [--restricted-user BENUTZER] [--chrome-extension-id ID] [--chrome-update-url URL] [--root TESTZIEL] [--no-start]"
+  echo "Verwendung: sudo $0 --xpi PFAD [--restricted-user BENUTZER] [--administrator-user BENUTZER] [--chrome-extension-id ID] [--chrome-update-url URL] [--root TESTZIEL] [--no-start]"
 }
 
 die() {
@@ -53,6 +54,13 @@ while (($#)); do
       restricted_users_explicit=true
       shift 2
       ;;
+    --administrator-user)
+      (($# >= 2)) || die "--administrator-user benötigt einen Kontonamen"
+      administrator_uid="$(id -u -- "$2" 2>/dev/null)" || die "Ubuntu-Benutzerkonto nicht gefunden: $2"
+      [[ "$administrator_uid" =~ ^[0-9]+$ && "$administrator_uid" -gt 0 ]] || die "ungültige Administrator-UID: $2"
+      administrator_uids+=("$administrator_uid")
+      shift 2
+      ;;
     --no-start)
       start_service=false
       shift
@@ -74,8 +82,19 @@ command -v pkexec >/dev/null || die "pkexec (polkit) fehlt"
 command -v openssl >/dev/null || die "openssl fehlt"
 command -v base64 >/dev/null || die "base64 fehlt"
 command -v gdbus >/dev/null || die "gdbus (GLib) fehlt"
+
+# Freeze the administrator-selected input before validation. This prevents a
+# writable Downloads path from being swapped between ZIP inspection and the
+# privileged installation step.
+staged_xpi="$(mktemp)" || die "temporäre XPI-Kopie konnte nicht angelegt werden"
+trap 'rm -f -- "$staged_xpi"' EXIT
+install -m 0600 -- "$xpi_path" "$staged_xpi" || die "XPI konnte nicht sicher vorgelagert werden"
 if [[ -n "$chrome_extension_id" && ! "$chrome_extension_id" =~ ^[a-p]{32}$ ]]; then
   die "Chrome-Extension-ID muss aus 32 Zeichen a-p bestehen"
+fi
+
+if ((${#administrator_uids[@]} == 0)) && [[ "${SUDO_UID:-}" =~ ^[0-9]+$ && "${SUDO_UID}" -gt 0 ]]; then
+  administrator_uids+=("$SUDO_UID")
 fi
 if [[ "$chrome_update_url" != https://* ]]; then
   die "Chrome-Update-URL muss HTTPS verwenden"
@@ -105,7 +124,7 @@ if [[ "$restricted_users_explicit" == false ]]; then
   fi
 fi
 
-python3 - "$xpi_path" "$EXTENSION_ID" <<'PY'
+python3 - "$staged_xpi" "$EXTENSION_ID" <<'PY'
 import json
 import sys
 import zipfile
@@ -125,8 +144,8 @@ try:
     version_tuple = tuple(int(part) for part in version.split("."))
 except (AttributeError, ValueError):
     raise SystemExit(f"Fehler: ungültige XPI-Version {version!r}")
-if version_tuple < (0, 3, 0):
-    raise SystemExit("Fehler: XPI ist älter als 0.3.0 und enthält die sichere Regelverwaltung noch nicht")
+if version_tuple < (0, 5, 3):
+    raise SystemExit("Fehler: XPI ist älter als 0.5.3 und unterstützt das aktuelle Protokoll nicht")
 required = {"storage", "alarms", "contextMenus", "declarativeNetRequest", "nativeMessaging"}
 if not required.issubset(set(manifest.get("permissions", []))):
     raise SystemExit("Fehler: XPI enthält nicht alle benötigten Webfilter-Berechtigungen")
@@ -161,6 +180,7 @@ readonly POLKIT_POLICY="$(prefix_path /usr/share/polkit-1/actions/local.ubuntu-p
 readonly STATE_DIR="$(prefix_path /var/lib/ubuntu-parental-control)"
 readonly RULE_HISTORY_DIR="$STATE_DIR/rule-history"
 readonly LIVE_SIGNING_KEY="$STATE_DIR/live-signing-key.pem"
+readonly SNAPSHOT_GENERATION="$STATE_DIR/snapshot-generation"
 readonly SYSTEMD_DIR="$(prefix_path /etc/systemd/system)"
 readonly STATE_FILE="$STATE_DIR/install-state.json"
 readonly BACKUP_FILE="$STATE_DIR/policies.json.before-install"
@@ -213,6 +233,9 @@ fi
 for restricted_uid in "${restricted_uids[@]}"; do
   config_arguments+=(--restricted-uid "$restricted_uid")
 done
+for administrator_uid in "${administrator_uids[@]}"; do
+  config_arguments+=(--administrator-uid "$administrator_uid")
+done
 python3 "$PROJECT_ROOT/installer/write_runtime_config.py" "${config_arguments[@]}"
 python3 "$PROJECT_ROOT/installer/ensure_default_rules.py" \
   --rules "$ETC_DIR/rules.json" \
@@ -236,7 +259,7 @@ install -D -m 0644 \
   "$FIREFOX_CONSENT_DESKTOP"
 install -m 0644 "$PROJECT_ROOT/daemon/ubuntu-parental-control.service" "$SYSTEMD_DIR/ubuntu-parental-control.service"
 install -D -m 0644 "$PROJECT_ROOT/installer/local.ubuntu-parental-control.policy" "$POLKIT_POLICY"
-install -m 0644 "$xpi_path" "$EXTENSION_DIR/webfilter.xpi"
+install -m 0644 "$staged_xpi" "$EXTENSION_DIR/webfilter.xpi"
 
 if [[ "$root_prefix" == "/" ]]; then
   native_host_path="/usr/lib/ubuntu-parental-control/native_host.py"
@@ -280,6 +303,7 @@ python3 "$LIB_DIR/managed_policy.py" \
   --config "$ETC_DIR/config.json" \
   --rules "$ETC_DIR/rules.json" \
   --user-domains "$STATE_DIR/user-domains.json" \
+  --snapshot-generation "$SNAPSHOT_GENERATION" \
   --firefox-policy "$POLICY_FILE" \
   --chrome-policy "$CHROME_POLICY"
 

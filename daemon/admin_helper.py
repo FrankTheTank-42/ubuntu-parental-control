@@ -5,13 +5,21 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 from managed_policy import PolicyPublicationError, make_managed_data
+from daemon import load_valid_rules
 from rule_validator import RuleValidator
-from upcctl import CommandError, SYSTEM_RULES, SYSTEM_USER_DOMAINS, write_rules_atomic
+from upcctl import (
+    CommandError,
+    SYSTEM_RULES,
+    SYSTEM_USER_DOMAINS,
+    rules_mutation_lock,
+    write_rules_atomic,
+)
 from user_rules import UserDomainStore, UserRuleError, object_revision
 
 
@@ -30,8 +38,11 @@ def apply_request(
     if not isinstance(request, dict) or not isinstance(request.get("command"), str):
         raise CommandError("Unbekannte oder unerwartete Administrator-Anfrage")
     if request["command"] == "apply_rules":
-        if set(request) != {"command", "rules"}:
+        if set(request) != {"command", "rules", "expected_base_revision"}:
             raise CommandError("Unerwartete Felder in Administrator-Anfrage")
+        expected_revision = request.get("expected_base_revision")
+        if not isinstance(expected_revision, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_revision):
+            raise CommandError("Erwartete Basisrevision ist ungültig")
         rules = request.get("rules")
         issues = RuleValidator().validate(rules)
         if issues:
@@ -42,7 +53,11 @@ def apply_request(
             make_managed_data(effective_rules)
         except (PolicyPublicationError, UserRuleError) as exc:
             raise CommandError(f"Regeln können nicht im Browser veröffentlicht werden: {exc}") from exc
-        write_rules_atomic(target, rules)
+        with rules_mutation_lock(target):
+            current = load_valid_rules(target)
+            if object_revision(current) != expected_revision:
+                raise CommandError("Basisregeln wurden zwischenzeitlich geändert; bitte neu laden")
+            write_rules_atomic(target, rules)
         return {"base_revision": object_revision(rules)}
     if request["command"] == "remove_user_domain":
         if set(request) != {"command", "uid", "block_id", "domain"}:

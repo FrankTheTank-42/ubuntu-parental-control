@@ -46,6 +46,7 @@ erteilen.
 Der Managed Snapshot enthält:
 
 - `protocol_version`: Version des Extension-/Daemon-Protokolls,
+- `generation`: persistent monoton steigende Veröffentlichungsnummer,
 - `revision`: SHA-256 über das kanonische Regelobjekt,
 - `snapshot_json`: kanonisches JSON aus Protokollversion, Revision und Regeln.
 - `live_public_key_spki`: öffentlicher ECDSA-P-256-Vertrauensanker für den
@@ -54,6 +55,10 @@ Der Managed Snapshot enthält:
 Der Live-Snapshot ergänzt `live_signature`, eine Signatur über die exakten
 UTF-8-Bytes von `snapshot_json`. Der private Schlüssel liegt ausschließlich
 rootlesbar unter `/var/lib/ubuntu-parental-control/live-signing-key.pem`.
+Die Extension akzeptiert keinen signierten Snapshot mit einer kleineren
+Generation als der zuletzt aktivierten Generation oder dem Managed-Anker;
+eine wiederverwendete Generation mit abweichendem Inhalt wird ebenfalls
+abgelehnt.
 
 Die doppelte Revision erkennt abgeschnittene, gemischte oder anderweitig
 beschädigte Policy-Daten. Für Managed Storage beruht die Authentizität auf den

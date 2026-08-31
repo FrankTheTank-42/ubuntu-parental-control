@@ -135,13 +135,15 @@ assert.throws(
   const managedRules = rules([]);
   const canonical = engine.stableStringify(managedRules);
   const revision = cryptoModule.createHash("sha256").update(canonical).digest("hex");
-  const snapshot = { protocol_version: 1, revision, rules: managedRules };
+  const snapshot = { protocol_version: 2, generation: 7, revision, rules: managedRules };
   const parsed = await engine.parseManagedSnapshot({
-    protocol_version: 1,
+    protocol_version: 2,
+    generation: 7,
     revision,
     snapshot_json: engine.stableStringify(snapshot),
   });
   assert.equal(parsed.revision, revision);
+  assert.equal(parsed.generation, 7);
   console.log("Browserneutrale Regelengine erfolgreich getestet.");
 })().catch((error) => {
   console.error(error);

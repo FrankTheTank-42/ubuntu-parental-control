@@ -77,6 +77,7 @@ class UpcctlTest(unittest.TestCase):
                 command_apply(target, source, dry_run=True)
             self.assertEqual(original, target.read_bytes())
             self.assertFalse(history_dir_for(target).exists())
+            self.assertFalse(target.with_name("rules.json.lock").exists())
             self.assertIn('-    "default_action": "allow"', output.getvalue())
             self.assertIn('+    "default_action": "block"', output.getvalue())
 

@@ -132,7 +132,11 @@ def request_admin(
     socket_path: Path = DEFAULT_SOCKET,
 ) -> dict[str, Any]:
     if request.get("command") == "admin_apply":
-        admin_request = {"command": "apply_rules", "rules": request.get("rules")}
+        admin_request = {
+            "command": "apply_rules",
+            "rules": request.get("rules"),
+            "expected_base_revision": request.get("expected_base_revision"),
+        }
     elif request.get("command") == "admin_remove_user_domain":
         admin_request = {
             "command": "remove_user_domain",

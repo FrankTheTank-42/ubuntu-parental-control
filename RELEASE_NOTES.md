@@ -1,5 +1,16 @@
 # Versionshinweise
 
+## 0.5.3
+
+### Firefox und Chrome
+
+- Aktualisiert das ausgelieferte Extension-/Daemon-Protokoll auf Version 2.
+- Verhindert signierte Snapshot-Replays und Rollbacks durch monotone
+  Veröffentlichungsnummern.
+- Diese Version ist für jede Änderung am Extension-Paket oder Protokoll
+  erforderlich; reine Daemon-, CI- oder Dokumentationsänderungen erhöhen die
+  Extension-Version nicht.
+
 ## 0.5.2
 
 ### Firefox und Chrome

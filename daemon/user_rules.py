@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from managed_policy import ManagedPolicyPublisher, _atomic_write
+from managed_policy import ManagedPolicyPublisher, _atomic_write, capture_file, restore_file
 from rule_validator import RuleValidator
 
 
@@ -29,6 +29,61 @@ BLOCK_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 
 class UserRuleError(RuntimeError):
     pass
+
+
+class SnapshotGenerationStore:
+    """Persist a strictly increasing generation before publishing a snapshot."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def next(self) -> int:
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        lock_path = self.path.with_name(f"{self.path.name}.lock")
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(lock_path, flags, 0o600)
+        try:
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o077:
+                raise UserRuleError("Snapshot-Generationssperre ist nicht ausreichend geschützt")
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            current = 0
+            if self.path.exists():
+                if self.path.is_symlink() or not self.path.is_file():
+                    raise UserRuleError("Snapshot-Generation ist keine reguläre Datei")
+                mode = stat.S_IMODE(self.path.stat().st_mode)
+                if mode & 0o077:
+                    raise UserRuleError("Snapshot-Generation ist nicht ausreichend geschützt")
+                try:
+                    current = int(self.path.read_text(encoding="ascii").strip())
+                except (OSError, UnicodeError, ValueError) as exc:
+                    raise UserRuleError("Snapshot-Generation ist ungültig") from exc
+                if current < 0:
+                    raise UserRuleError("Snapshot-Generation ist ungültig")
+            following = current + 1
+            temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
+            write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            if hasattr(os, "O_NOFOLLOW"):
+                write_flags |= os.O_NOFOLLOW
+            try:
+                output = os.open(temporary, write_flags, 0o600)
+                with os.fdopen(output, "w", encoding="ascii", newline="\n") as handle:
+                    handle.write(f"{following}\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, self.path)
+                directory_fd = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            finally:
+                temporary.unlink(missing_ok=True)
+            return following
+        finally:
+            os.close(descriptor)
 
 
 def object_revision(value: object) -> str:
@@ -276,12 +331,16 @@ class EffectiveRulePublisher:
         policy_publisher: ManagedPolicyPublisher,
         live_snapshot: Path,
         signer: LiveSnapshotSigner,
+        generation_store: SnapshotGenerationStore | None = None,
     ) -> None:
         self.config = config
         self.store = store
         self.policy_publisher = policy_publisher
         self.live_snapshot = live_snapshot
         self.signer = signer
+        self.generation_store = generation_store or SnapshotGenerationStore(
+            live_snapshot.with_name("snapshot-generation")
+        )
         self.base_rules: dict[str, Any] | None = None
         self.managed_data: dict[str, object] | None = None
         self._user_signature: tuple[int, int, int] | None = None
@@ -297,9 +356,35 @@ class EffectiveRulePublisher:
             issues = RuleValidator().validate(effective)
             if issues:
                 raise UserRuleError(f"Effektive Regeln sind ungültig: {issues[0]}")
-            managed = self.policy_publisher(effective)
-            signed_managed = self.signer.sign(managed)
-            _atomic_write(self.live_snapshot, signed_managed)
+            generation = self.generation_store.next()
+            browsers = self.policy_publisher.config["managed_browsers"]
+            policy_paths = []
+            if "chrome" in browsers:
+                policy_paths.append(self.policy_publisher.chrome_policy)
+            if "firefox" in browsers:
+                policy_paths.append(self.policy_publisher.firefox_policy)
+            captured = {path: capture_file(path) for path in policy_paths}
+            live_captured = capture_file(self.live_snapshot)
+            try:
+                managed = self.policy_publisher(effective, generation=generation)
+                signed_managed = self.signer.sign(managed)
+                _atomic_write(self.live_snapshot, signed_managed)
+            except Exception as publication_error:
+                rollback_errors = []
+                for path in reversed(policy_paths):
+                    try:
+                        restore_file(path, captured[path])
+                    except Exception as rollback_error:
+                        rollback_errors.append(f"{path}: {rollback_error}")
+                try:
+                    restore_file(self.live_snapshot, live_captured)
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{self.live_snapshot}: {rollback_error}")
+                if rollback_errors:
+                    raise UserRuleError(
+                        f"Publikation fehlgeschlagen; Rollback unvollständig: {'; '.join(rollback_errors)}"
+                    ) from publication_error
+                raise
             self.base_rules = copy.deepcopy(base_rules)
             self.managed_data = signed_managed
             self._user_signature = self.store.signature()
@@ -319,18 +404,21 @@ class EffectiveRulePublisher:
         with self._lock:
             if not isinstance(nonce, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", nonce):
                 raise UserRuleError("Status-Nonce ist ungültig")
+            restricted = uid in self.config["restricted_users"]
+            administrator = uid in self.config["administrator_users"]
+            role = "restricted" if restricted else "administrator" if administrator else "unauthorized"
             allowed: list[str] = []
-            if self.base_rules is not None and uid in self.config["restricted_users"]:
+            if self.base_rules is not None and restricted:
                 allowed = [
                     block["id"]
                     for block in self.base_rules["blocks"]
                     if block["action"] == "block"
                 ]
             authorization = {
-                "protocol_version": 1,
+                "protocol_version": 2,
                 "nonce": nonce,
                 "uid": uid,
-                "restricted": uid in self.config["restricted_users"],
+                "role": role,
                 "can_add_domains_to": allowed,
             }
             authorization_json = json.dumps(

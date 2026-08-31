@@ -15,6 +15,8 @@ from user_rules import EffectiveRulePublisher, UserRuleError
 
 
 MAX_REQUEST_BYTES = 16_384
+MAX_CONCURRENT_CONNECTIONS = 16
+MAX_CONCURRENT_PER_UID = 2
 
 
 class ControlServer:
@@ -24,6 +26,9 @@ class ControlServer:
         self._socket: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        self._connection_lock = threading.Lock()
+        self._connections_total = 0
+        self._connections_by_uid: dict[int, int] = {}
 
     def start(self) -> None:
         self.path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -31,10 +36,15 @@ class ControlServer:
             raise RuntimeError(f"Control-Socket darf kein symbolischer Link sein: {self.path}")
         self.path.unlink(missing_ok=True)
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        listener.bind(str(self.path))
-        os.chmod(self.path, 0o666)
-        listener.listen(16)
-        listener.settimeout(0.25)
+        try:
+            listener.bind(str(self.path))
+            os.chmod(self.path, 0o666)
+            listener.listen(16)
+            listener.settimeout(0.25)
+        except Exception:
+            listener.close()
+            self.path.unlink(missing_ok=True)
+            raise
         self._socket = listener
         self._thread = threading.Thread(
             target=self._serve,
@@ -62,9 +72,48 @@ class ControlServer:
                 if self._stop.is_set():
                     return
                 continue
+            try:
+                uid = self._peer_uid(connection)
+            except OSError:
+                connection.close()
+                continue
+            with self._connection_lock:
+                per_uid = self._connections_by_uid.get(uid, 0)
+                if (
+                    self._connections_total >= MAX_CONCURRENT_CONNECTIONS
+                    or per_uid >= MAX_CONCURRENT_PER_UID
+                ):
+                    connection.close()
+                    continue
+                self._connections_total += 1
+                self._connections_by_uid[uid] = per_uid + 1
+            try:
+                threading.Thread(
+                    target=self._serve_connection,
+                    args=(connection, uid),
+                    name=f"ubuntu-parental-control-peer-{uid}",
+                    daemon=True,
+                ).start()
+            except Exception:
+                connection.close()
+                self._release_connection(uid)
+
+    def _serve_connection(self, connection: socket.socket, uid: int) -> None:
+        try:
             with connection:
                 connection.settimeout(1)
-                self._handle_connection(connection)
+                self._handle_connection(connection, uid)
+        finally:
+            self._release_connection(uid)
+
+    def _release_connection(self, uid: int) -> None:
+        with self._connection_lock:
+            self._connections_total -= 1
+            remaining = self._connections_by_uid.get(uid, 1) - 1
+            if remaining:
+                self._connections_by_uid[uid] = remaining
+            else:
+                self._connections_by_uid.pop(uid, None)
 
     @staticmethod
     def _peer_uid(connection: socket.socket) -> int:
@@ -75,7 +124,7 @@ class ControlServer:
         )
         return uid
 
-    def _handle_connection(self, connection: socket.socket) -> None:
+    def _handle_connection(self, connection: socket.socket, uid: int | None = None) -> None:
         request_id: object = None
         try:
             payload = bytearray()
@@ -91,7 +140,8 @@ class ControlServer:
             if not isinstance(request, dict):
                 raise UserRuleError("Anfrage muss ein JSON-Objekt sein")
             request_id = request.get("id")
-            uid = self._peer_uid(connection)
+            if uid is None:
+                uid = self._peer_uid(connection)
             result = self.dispatch(uid, request)
             response = {"id": request_id, "ok": True, "result": result}
         except (OSError, UnicodeError, json.JSONDecodeError, UserRuleError, ValueError) as exc:
@@ -111,10 +161,11 @@ class ControlServer:
         if command == "status":
             return self.publisher.status(uid, request.get("nonce"))
         if command == "base_rules":
-            if uid in self.publisher.config["restricted_users"]:
+            if uid not in self.publisher.config["administrator_users"]:
                 raise UserRuleError("Basisregeln sind nur im Elternkonto verfügbar")
             return {
                 "rules": self.publisher.base_snapshot(),
+                "base_revision": self.publisher.publication_status()["base_revision"],
                 "user_domains": self.publisher.user_domain_snapshot(),
             }
         if command == "own_user_domains":
