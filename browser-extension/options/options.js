@@ -87,6 +87,7 @@ function renderConnection(native) {
   const detail = document.querySelector("#connection-detail");
   const errorDetail = document.querySelector("#connection-error-detail");
   const repair = document.querySelector("#repair-native");
+  connection.hidden = false;
   connection.classList.remove("connected", "error");
   errorDetail.hidden = true;
   errorDetail.textContent = "";
@@ -110,9 +111,8 @@ function renderConnection(native) {
     detail.textContent = "Du kannst jede Blockierliste um Domains ergänzen. Löschen und Lockern ist nicht möglich.";
     document.querySelector("#view-mode").textContent = "Kinderansicht";
   } else {
-    title.textContent = "Administrativer Editor verfügbar";
-    detail.textContent = "Änderungen benötigen bei jedem Speichern eine Polkit-Administratoranmeldung.";
     document.querySelector("#view-mode").textContent = "Elternansicht";
+    connection.hidden = true;
   }
 }
 
@@ -389,11 +389,6 @@ function updateBlockFromForm(form, rules, blockId) {
   edited.enabled = form.querySelector(".admin-enabled").checked;
   edited.action = form.querySelector(".admin-action").value;
   edited.user_permissions.add_domains = edited.action === "block";
-  const priority = Number(form.querySelector(".admin-priority").value);
-  if (!Number.isInteger(priority) || priority < -1000 || priority > 1000) {
-    throw new Error("Die Priorität muss eine ganze Zahl zwischen -1000 und 1000 sein.");
-  }
-  edited.priority = priority;
   edited.targets.url_patterns = lines(form.querySelector(".admin-patterns").value);
   edited.targets.url_regex = parseRegexLines(form.querySelector(".admin-regex").value);
   edited.exceptions.domains = lines(form.querySelector(".admin-exceptions").value);
@@ -448,7 +443,6 @@ function setupAdminForm(card, block, baseRules, editable, profileTimezone) {
   form.querySelector(".admin-name").value = block.name;
   form.querySelector(".admin-enabled").checked = block.enabled;
   form.querySelector(".admin-action").value = block.action;
-  form.querySelector(".admin-priority").value = String(block.priority);
   form.querySelector(".admin-patterns").value = block.targets.url_patterns.join("\n");
   form.querySelector(".admin-regex").value = regexLines(block.targets.url_regex);
   form.querySelector(".admin-exceptions").value = block.exceptions.domains.join("\n");
@@ -662,10 +656,6 @@ function renderBlocks(state) {
   document.body.classList.remove("mode-loading", "mode-parent", "mode-child", "mode-readonly");
   document.body.classList.add(admin ? "mode-parent" : child ? "mode-child" : "mode-readonly");
   if (!state.rules) { showMessage("Es ist noch kein gültiger Regelsnapshot verfügbar.", true); return; }
-  const rules = displayedRules(state);
-  document.querySelector("#block-count").textContent = String(rules.blocks.length);
-  document.querySelector("#domain-count").textContent = String(rules.blocks.reduce((sum, block) => sum + block.targets.domains.length, 0));
-  document.querySelector("#revision").textContent = state.revision?.slice(0, 10) ?? "–";
   const create = document.querySelector("#create-block"); create.hidden = !(admin || child); create.disabled = child; create.dataset.permanentlyDisabled = child ? "true" : "false"; create.title = child ? "Nur ein Elternkonto kann neue Blocks anlegen." : "";
   renderOverview(state);
   if (selectedBlockId) renderDetail(state);

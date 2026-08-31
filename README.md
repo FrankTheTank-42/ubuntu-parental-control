@@ -134,7 +134,9 @@ In einem nicht als eingeschränkt registrierten Konto lassen sich Blocks
 anlegen, bearbeiten und löschen. Jede Speicherung öffnet eine neue
 Polkit-Administratoranmeldung; es wird bewusst keine Autorisierung für spätere
 Änderungen zwischengespeichert. Die Oberfläche kann Name, Aktivierung, Aktion,
-Priorität, Domainziele, URL-Patterns, URL-Regex und Domain-Ausnahmen bearbeiten.
+Domainziele, URL-Patterns, URL-Regex und Domain-Ausnahmen bearbeiten. Die
+Priorität wird ausschließlich in der Blockübersicht über die Reihenfolge
+geändert und erscheint nicht als separates Zahlenfeld in den Regeldetails.
 Zeitpläne werden ohne JSON-Eingabe über einen Wocheneditor verwaltet: Für jeden
 Block lassen sich mehrere Kombinationen aus Wochentagen, Start- und Endzeit
 sowie eine gemeinsame IANA-Zeitzone festlegen. Liegt die Endzeit vor oder

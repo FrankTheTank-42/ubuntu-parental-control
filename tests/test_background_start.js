@@ -42,6 +42,9 @@ const blockedSource = fs.readFileSync(
 
 assert.ok(optionsHtml.includes('id="busy-overlay"'));
 assert.ok(optionsHtml.includes('id="connection-error-detail"'));
+assert.ok(optionsHtml.includes('id="connection" class="connection" aria-live="polite" hidden'));
+assert.ok(!optionsHtml.includes('class="summary"'));
+assert.ok(!optionsHtml.includes('admin-priority'));
 assert.ok(optionsHtml.includes('id="repair-native"'));
 assert.ok(optionsHtml.includes('ubuntu-parental-control://firefox-consent/allow'));
 assert.ok(optionsHtml.includes('class="add-domain-unavailable"'));
@@ -72,6 +75,9 @@ assert.ok(optionsSource.includes('if (child && block.action === "block")'));
 assert.ok(optionsSource.includes("scheduleFromDrafts(timezone, drafts)"));
 assert.ok(optionsSource.includes('form.querySelector(".schedule-empty").hidden'));
 assert.ok(optionsSource.includes('event.altKey'));
+assert.ok(optionsSource.includes('connection.hidden = true'));
+assert.ok(!optionsSource.includes('Administrativer Editor verfügbar'));
+assert.ok(!optionsSource.includes('admin-priority'));
 assert.ok(optionsSource.includes('draftRules.profile.default_action ='));
 assert.ok(optionsSource.includes('applyAdminRules(structuredClone(draftRules)'));
 assert.ok(optionsSource.includes('targets: { domains: [], url_patterns: [], url_regex: [] }'));
@@ -82,7 +88,6 @@ assert.ok(!optionsSource.includes('prompt("Erste zu blockierende Domain:")'));
 assert.ok(backgroundSource.includes("Domain fehlt im bestätigten Regelsnapshot"));
 assert.ok(backgroundSource.includes('message.type === "get_block_info"'));
 assert.ok(blockedHtml.includes('id="block-source-name"'));
-assert.ok(blockedHtml.includes('id="block-source-priority"'));
 assert.ok(blockedHtml.includes('<script src="blocked.js"></script>'));
 assert.ok(blockedSource.includes('type: "get_block_info"'));
 

@@ -301,7 +301,6 @@ async function main() {
   });
   assert.equal(blockInfo.ok, true);
   assert.equal(blockInfo.result.name, "Eigene Ablenkungen");
-  assert.equal(blockInfo.result.priority, 0);
   const unknownBlockInfo = await new Promise((resolve) => {
     runtimeMessage({ type: "get_block_info", block_id: "unknown" }, null, resolve);
   });

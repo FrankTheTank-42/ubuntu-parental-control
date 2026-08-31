@@ -151,7 +151,6 @@ HTTP(S)-Hostberechtigungen und veröffentlichen die HTML-Datei als
 `web_accessible_resources`. Der Redirect übergibt ausschließlich die technische
 ID des auslösenden Blocks. Ein lokales Skript fragt dazu den Namen aus dem
 bereits aktiven, verifizierten Snapshot ab und zeigt ihn auf der Blockseite an.
-Die Seite ergänzt die Priorität als reine Leseinformation.
 Unbekannte oder manipulierte IDs werden ignoriert. Die ursprünglich besuchte
 URL wird weder gelesen noch gespeichert oder übertragen; externe Ressourcen
 werden nicht geladen.

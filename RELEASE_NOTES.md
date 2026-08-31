@@ -18,11 +18,12 @@
 - Zeigt auf der lokalen Sperrseite den Namen des expliziten Blocks an, der die
   Navigation ausgelöst hat. Die technische ID wird gegen den aktiven Snapshot
   geprüft; die besuchte URL wird weder übernommen noch gespeichert.
-- Ergänzt die auslösende Blockpriorität auf der Sperrseite als kleine
-  schreibgeschützte Information.
 - Zeigt Domainziele in der Detailansicht nur noch als kompakte Liste. Das Feld
   „Domains hinzufügen“ wird erst bei Bedarf eingeblendet und nimmt auch direkt
   eingefügte Mehrfachlisten auf.
+- Verlegt die Prioritätsbearbeitung vollständig in die Blockübersicht und
+  entfernt das redundante Zahlenfeld aus den Regeldetails. Die Statistikleiste
+  sowie der doppelte Elternstatus entfallen zugunsten eines ruhigeren Kopfbereichs.
 
 ## 0.5.0
 
