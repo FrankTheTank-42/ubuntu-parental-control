@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -495,6 +496,11 @@ class UpcctlTest(unittest.TestCase):
                 True,
             )
             self.assertEqual({}, json.loads(target.read_text(encoding="utf-8"))["users"])
+
+    def test_list_system_user_domains_without_root_has_friendly_error(self) -> None:
+        with patch("upcctl.os.geteuid", return_value=1000):
+            with self.assertRaisesRegex(CommandError, r"sudo upcctl list-user-domains"):
+                command_list_user_domains(Path("/var/lib/ubuntu-parental-control/user-domains.json"))
 
     def test_symlink_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

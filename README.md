@@ -341,11 +341,29 @@ die zuvor erzwungene Erweiterung freigegeben. Danach aktiviert das Skript die
 temporäre `ExtensionSettings: blocked`- und `Extensions.Uninstall`-Policy; beim
 zweiten Start entfernt Firefox die Erweiterung. Nach jedem vollständig
 beendeten Firefox-Start wird der Ablauf im Terminal mit der Eingabetaste
-fortgesetzt. Vor dem Aufräumen prüft das Skript alle gefundenen normalen,
+fortgesetzt.
+
+Beide Firefox-Starts müssen in **jedem betroffenen Benutzerkonto** stattfinden,
+also auch in der echten grafischen Sitzung des Kinderkontos. Das Elternkonto
+kann die Systemkomponenten und Richtlinien administrativ entfernen, aber nicht
+den Erweiterungszustand eines geschlossenen fremden Firefox-Profils sicher
+aktualisieren. Das Kind muss dabei nichts genehmigen und kein Passwort
+eingeben; es startet und beendet lediglich Firefox, damit dieser die
+systemweite Richtlinie im eigenen Profil verarbeitet. Ein Start über
+`sudo -u` ist insbesondere beim Firefox-Snap kein zuverlässiger Ersatz für die
+echte Benutzersitzung.
+
+Vor dem Aufräumen prüft das Skript alle gefundenen normalen,
 Snap- und Flatpak-Firefox-Profile. Solange die Extension noch in einem Profil
 registriert ist, bleibt die Uninstall-Policy aktiv und der Ablauf kann nach
 einem weiteren Firefox-Neustart erneut ausgeführt werden. Erst nach der
 bestätigten Entfernung stellt das Skript die ursprüngliche Policy wieder her.
+
+Wird der Ablauf unterbrochen, stoppt ein erneuter Aufruf den Dienst nochmals
+und stellt die zur gespeicherten Phase gehörende temporäre Firefox-Policy
+wieder her. So kann ein zwischenzeitlicher Neustart oder eine Neuinstallation
+die Deinstallation nicht durch eine erneut veröffentlichte
+`force_installed`-Policy blockieren.
 
 ### Tests
 
@@ -359,6 +377,41 @@ node tests/test_schedule_model.js
 node tests/test_background_start.js
 node tests/test_native_live_update.js
 ```
+
+#### Lokales Testprotokoll für mehrere Benutzerkonten
+
+Das manuelle ODS-Testprotokoll lässt sich einmalig in eine lokale
+Weboberfläche importieren. Der kleine Systemdienst bleibt beim Wechsel zwischen
+Eltern- und Kinderkonto aktiv und speichert Änderungen zentral, ohne die
+ursprüngliche LibreOffice-Datei zu sperren. Er bindet ausschließlich an
+`127.0.0.1`; andere Rechner können die Oberfläche nicht erreichen.
+
+Installation mit dem aktuellen Testprotokoll:
+
+```bash
+sudo ./tools/test_protocol_web/install.sh \
+  --import-ods /PFAD/ZUM/ubuntu-parental-control-testprotokoll-0.5.3.ods
+```
+
+Danach kann in beiden Konten dieselbe Adresse geöffnet werden:
+
+```text
+http://127.0.0.1:8780
+```
+
+Status, Ist-Ergebnis, Notizen, Fehler und Kommandoergebnisse werden automatisch
+unter `/var/lib/ubuntu-parental-control-test-protocol/state.json` gespeichert.
+Markdown-, CSV- und JSON-Sicherungen lassen sich direkt in der Oberfläche
+herunterladen. Eine erneute Installation erhält diesen Teststand. Nur
+`--replace-data` ersetzt ihn ausdrücklich durch einen neuen ODS-Import.
+
+Der Testdienst lässt sich unabhängig von der Kindersicherung wieder entfernen:
+
+```bash
+sudo ./tools/test_protocol_web/uninstall.sh
+```
+
+Dabei bleiben die Testdaten erhalten. `--purge-data` entfernt sie ebenfalls.
 
 ## Sicherheit und Review
 

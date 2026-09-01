@@ -38,6 +38,26 @@ def main() -> None:
         "updates_disabled": True,
         "private_browsing": True,
     }
+
+    # A completed installation cancels any interrupted uninstall attempt for
+    # this extension. Leaving the same ID in Extensions.Uninstall would create
+    # a contradictory Firefox policy (force_installed and uninstall at once).
+    extensions = policies.get("Extensions")
+    if extensions is not None and not isinstance(extensions, dict):
+        raise ValueError("'Extensions' muss ein JSON-Objekt sein")
+    if isinstance(extensions, dict) and "Uninstall" in extensions:
+        uninstall = extensions["Uninstall"]
+        if not isinstance(uninstall, list):
+            raise ValueError("'Extensions.Uninstall' muss eine Liste sein")
+        extensions["Uninstall"] = [
+            extension_id
+            for extension_id in uninstall
+            if extension_id != args.extension_id
+        ]
+        if not extensions["Uninstall"]:
+            extensions.pop("Uninstall")
+        if not extensions:
+            policies.pop("Extensions")
     policies["BlockAboutConfig"] = True
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

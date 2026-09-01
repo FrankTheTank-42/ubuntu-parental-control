@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ubuntu Parental Control · Testprotokoll</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Ubuntu Parental Control · lokales Werkzeug</p>
+        <h1>Testprotokoll 0.5.3</h1>
+        <p class="subtitle">Kontenübergreifend testen, ohne eine gesperrte Tabellendatei.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="status-button" id="refresh-button" type="button">Aktualisieren</button>
+        <div class="save-state" id="save-state" role="status">Wird geladen …</div>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary" aria-label="Fortschritt">
+        <div class="progress-copy">
+          <strong id="progress-percent">0 %</strong>
+          <span id="progress-label">0 von 0 bearbeitet</span>
+        </div>
+        <div class="progress-track"><span id="progress-bar"></span></div>
+        <div class="metrics" id="metrics"></div>
+      </section>
+
+      <nav class="tabs" aria-label="Bereiche">
+        <button class="tab active" data-view="tests">Testfälle</button>
+        <button class="tab" data-view="issues">Fehler</button>
+        <button class="tab" data-view="commands">Kommandos</button>
+        <button class="tab" data-view="environment">Testumgebung</button>
+      </nav>
+
+      <section id="tests-view" class="view active">
+        <div class="toolbar">
+          <label class="search">Suchen
+            <input id="test-search" type="search" placeholder="ID, Bereich, Prüfschritt …">
+          </label>
+          <label>Status
+            <select id="status-filter">
+              <option value="">Alle</option>
+              <option>Offen</option>
+              <option>In Arbeit</option>
+              <option>Bestanden</option>
+              <option>Fehlgeschlagen</option>
+              <option>Nicht anwendbar</option>
+            </select>
+          </label>
+          <label>Konto
+            <select id="account-filter"><option value="">Alle</option></select>
+          </label>
+        </div>
+        <div id="test-list" class="card-list"></div>
+      </section>
+
+      <section id="issues-view" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Beobachtungen</p><h2>Fehlerprotokoll</h2></div>
+          <button class="status-button" id="add-issue" type="button">Fehler hinzufügen</button>
+        </div>
+        <div id="issue-list" class="card-list"></div>
+      </section>
+
+      <section id="commands-view" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Zum Kopieren</p><h2>Prüfkommandos</h2></div>
+        </div>
+        <div id="command-list" class="card-list"></div>
+      </section>
+
+      <section id="environment-view" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">Gemeinsamer Teststand</p><h2>Testumgebung</h2></div>
+        </div>
+        <form id="environment-form" class="environment-grid"></form>
+        <div class="exports">
+          <h3>Export und Sicherung</h3>
+          <p>Die zentrale JSON-Datei bleibt die Arbeitskopie. Diese Exporte sind Momentaufnahmen.</p>
+          <div class="button-row">
+            <a class="button secondary" href="/export/testprotokoll.md" download>Markdown</a>
+            <a class="button secondary" href="/export/testfaelle.csv" download>CSV</a>
+            <a class="button secondary" href="/export/sicherung.json" download>JSON-Sicherung</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <template id="test-template">
+      <article class="card test-card">
+        <button class="card-summary" type="button" aria-expanded="false">
+          <span class="test-id"></span>
+          <span class="test-title"></span>
+          <span class="badge account"></span>
+          <span class="badge status"></span>
+          <span class="chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="card-detail" hidden>
+          <p class="path"></p>
+          <div class="status-actions" role="group" aria-label="Teststatus"></div>
+          <div class="test-issues">
+            <div>
+              <strong>Verknüpfte Fehler</strong>
+              <div class="issue-link-list"></div>
+            </div>
+            <button class="status-button create-linked-issue" type="button">Fehler anlegen</button>
+          </div>
+          <label>Ist-Ergebnis
+            <textarea class="actual" rows="3"></textarea>
+          </label>
+          <label>Fehler-ID / Notiz
+            <textarea class="note" rows="2"></textarea>
+          </label>
+        </div>
+      </article>
+    </template>
+  </body>
+</html>

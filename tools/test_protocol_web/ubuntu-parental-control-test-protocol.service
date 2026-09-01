@@ -1,0 +1,37 @@
+[Unit]
+Description=Local Ubuntu Parental Control test protocol
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/lib/ubuntu-parental-control-test-protocol/server.py serve --state /var/lib/ubuntu-parental-control-test-protocol/state.json --host 127.0.0.1 --port 8780
+Restart=on-failure
+RestartSec=2s
+User=upc-testlog
+Group=upc-testlog
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/ubuntu-parental-control-test-protocol
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

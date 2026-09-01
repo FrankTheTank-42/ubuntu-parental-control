@@ -318,4 +318,26 @@ if [[ "$root_prefix" == "/" ]]; then
   fi
 fi
 
+# Only a fully successful installation cancels an interrupted uninstall. Keep
+# the original policy backup fields intact so a later uninstall can still
+# restore the pre-install browser configuration.
+python3 - "$STATE_FILE" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open(encoding="utf-8") as handle:
+    state = json.load(handle)
+state.pop("firefox_uninstall_phase", None)
+state["uninstall_pending"] = False
+temporary = path.with_suffix(".tmp")
+with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+    json.dump(state, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+os.chmod(temporary, 0o600)
+temporary.replace(path)
+PY
+
 echo "Installation abgeschlossen. Firefox vollständig neu starten und about:policies prüfen."

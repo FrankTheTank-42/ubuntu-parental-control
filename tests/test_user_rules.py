@@ -157,6 +157,16 @@ class UserRulesTest(unittest.TestCase):
             with self.assertRaises(UserRuleError):
                 UserDomainStore(path).load()
 
+    def test_user_state_permission_error_is_wrapped(self) -> None:
+        path = Path("/protected/user-domains.json")
+        with patch.object(
+            type(path),
+            "exists",
+            side_effect=PermissionError(13, "Permission denied", str(path)),
+        ):
+            with self.assertRaisesRegex(UserRuleError, "können nicht geprüft werden"):
+                UserDomainStore(path).load()
+
     def test_control_server_uses_real_peer_uid(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

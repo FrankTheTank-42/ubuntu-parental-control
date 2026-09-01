@@ -11,6 +11,36 @@
   erforderlich; reine Daemon-, CI- oder Dokumentationsänderungen erhöhen die
   Extension-Version nicht.
 
+### Installer
+
+- Repariert eine fortgesetzte Firefox-Deinstallation, wenn ein laufender
+  Dienst oder eine zwischenzeitliche Neuinstallation die Extension erneut als
+  `force_installed` veröffentlicht hat.
+- Stoppt den Dienst in jeder Deinstallationsphase erneut und bricht mit einer
+  verständlichen Fehlermeldung ab, falls das Stoppen nicht gelingt.
+- Entfernt bei einer erfolgreichen Neuinstallation veraltete
+  Deinstallationsmarker und widersprüchliche `Extensions.Uninstall`-Einträge.
+- Zeigt eine vom Firefox-Portal zurückgegebene leere Berechtigungsliste nach
+  `upc-firefox-consent reset` verständlich als „nicht entschieden“ an.
+
+### Kommandozeile
+
+- Ersetzt den Python-Traceback von `upcctl list-user-domains` ohne Rootrechte
+  durch den verständlichen Hinweis, den Befehl mit `sudo` auszuführen.
+
+### Testwerkzeuge
+
+- Ergänzt ein ausschließlich lokal erreichbares, kontenübergreifendes
+  Web-Testprotokoll. Es importiert den vorhandenen ODS-Teststand einmalig,
+  speichert Ergebnisse automatisch und exportiert Markdown, CSV und JSON.
+- Fehler lassen sich direkt aus einem Testfall anlegen und in beide Richtungen
+  verknüpfen. Ein eigenes Kommentarfeld dokumentiert Behebung und Nachprüfung.
+- Ältere verkürzte Testfall-IDs wie `T29` werden beim Laden auf die vorhandene
+  kanonische ID `T029` abgebildet; neue Verknüpfungen müssen auf einen
+  existierenden Testfall zeigen.
+- Übernimmt die tatsächliche F003-Reproduktion ohne den versehentlich im
+  Tabellenprotokoll eingetragenen `sudo`-Präfix.
+
 ## 0.5.2
 
 ### Firefox und Chrome

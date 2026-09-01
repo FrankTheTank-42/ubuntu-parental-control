@@ -43,6 +43,18 @@ class FirefoxNativeConsentTest(unittest.TestCase):
         run.return_value = subprocess.CompletedProcess([], 0, "(['no'],)\n", "")
         self.assertEqual("verweigert", consent.status())
 
+    @patch("firefox_native_consent.subprocess.run")
+    def test_status_treats_empty_permission_array_as_undecided(self, run) -> None:
+        for output in ("(@as [],)\n", "([],)\n"):
+            with self.subTest(output=output):
+                run.return_value = subprocess.CompletedProcess([], 0, output, "")
+                self.assertEqual("nicht entschieden", consent.status())
+
+    @patch("firefox_native_consent.subprocess.run")
+    def test_status_keeps_unknown_permission_values_visible(self, run) -> None:
+        run.return_value = subprocess.CompletedProcess([], 0, "(['ask'],)\n", "")
+        self.assertEqual("unbekannt ((['ask'],))", consent.status())
+
     def test_only_exact_repair_uri_is_accepted(self) -> None:
         consent.validate_consent_uri(consent.CONSENT_URI)
         for value in (

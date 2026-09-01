@@ -416,6 +416,11 @@ def command_set_profile(
 
 
 def command_list_user_domains(path: Path) -> None:
+    if path == SYSTEM_USER_DOMAINS and os.geteuid() != 0:
+        raise CommandError(
+            "Benutzer-Domains sind rootgeschützt; "
+            "bitte 'sudo upcctl list-user-domains' verwenden"
+        )
     try:
         state = UserDomainStore(path).load()
     except UserRuleError as exc:

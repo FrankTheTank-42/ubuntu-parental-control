@@ -274,6 +274,80 @@ assert state["firefox_uninstall_phase"] == "uninstall_pending"
 assert state["uninstall_pending"] is True
 PY
 
+# A reinstall during an interrupted uninstall must explicitly cancel the old
+# phase and remove the contradictory Extensions.Uninstall entry. The original
+# pre-install policy backup must remain available for a later clean uninstall.
+"$PROJECT_ROOT/installer/install.sh" \
+  --root "$TEST_ROOT" \
+  --xpi "$XPI" \
+  --no-start >/dev/null
+python3 - \
+  "$POLICY" \
+  "$TEST_ROOT/var/lib/ubuntu-parental-control/install-state.json" \
+  "$TEST_ROOT/var/lib/ubuntu-parental-control/policies.json.before-install" \
+  "$TEST_ROOT/original-policy.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+extension_id = "webfilter@ubuntu-parental-control.local"
+with open(sys.argv[1], encoding="utf-8") as handle:
+    policies = json.load(handle)["policies"]
+assert policies["ExtensionSettings"][extension_id]["installation_mode"] == "force_installed"
+extensions = policies.get("Extensions", {})
+assert extension_id not in extensions.get("Uninstall", [])
+with open(sys.argv[2], encoding="utf-8") as handle:
+    state = json.load(handle)
+assert "firefox_uninstall_phase" not in state
+assert state["uninstall_pending"] is False
+assert Path(sys.argv[3]).read_bytes() == Path(sys.argv[4]).read_bytes()
+PY
+
+# Recreate the exact field state observed on a real system: a daemon/reinstall
+# has restored force_installed while the persisted phase still says that
+# Firefox should uninstall the extension. Resuming must repair the policy and
+# remove all reinstalled runtime components before it waits for Firefox.
+python3 - \
+  "$POLICY" \
+  "$TEST_ROOT/var/lib/ubuntu-parental-control/install-state.json" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+extension_id = "webfilter@ubuntu-parental-control.local"
+policy_path = Path(sys.argv[1])
+policy = json.loads(policy_path.read_text(encoding="utf-8"))
+policy["policies"].setdefault("Extensions", {})["Uninstall"] = [extension_id]
+policy_path.write_text(json.dumps(policy, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+state_path = Path(sys.argv[2])
+state = json.loads(state_path.read_text(encoding="utf-8"))
+state["firefox_uninstall_phase"] = "uninstall_pending"
+state["uninstall_pending"] = True
+state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+os.chmod(state_path, 0o600)
+PY
+if "$PROJECT_ROOT/installer/uninstall.sh" \
+  --root "$TEST_ROOT" --no-stop </dev/null >/dev/null 2>&1; then
+  echo "Fortgesetzte Deinstallation wurde ohne Firefox-Neustart unerwartet abgeschlossen" >&2
+  exit 1
+fi
+python3 - "$POLICY" <<'PY'
+import json
+import sys
+
+extension_id = "webfilter@ubuntu-parental-control.local"
+with open(sys.argv[1], encoding="utf-8") as handle:
+    policies = json.load(handle)["policies"]
+assert policies["ExtensionSettings"][extension_id] == {"installation_mode": "blocked"}
+assert extension_id in policies["Extensions"]["Uninstall"]
+PY
+test ! -e "$TEST_ROOT/etc/systemd/system/ubuntu-parental-control.service"
+test ! -e "$TEST_ROOT/usr/lib/ubuntu-parental-control/daemon.py"
+test ! -e "$TEST_ROOT/etc/ubuntu-parental-control/rules.json"
+test ! -e "$TEST_ROOT/var/lib/ubuntu-parental-control/user-domains.json"
+
 # Die endgültige Policy darf nicht entfernt werden, solange Firefox die
 # Extension noch in einem bekannten Profil registriert hat.
 readonly FIREFOX_TEST_PROFILE="$TEST_ROOT/home/child/snap/firefox/common/.mozilla/firefox/test.default"

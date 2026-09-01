@@ -48,6 +48,9 @@ done
 if [[ "$root_prefix" == "/" && ${EUID} -ne 0 ]]; then
   die "die Systemdeinstallation muss als root laufen"
 fi
+if [[ "$root_prefix" == "/" && "$stop_service" == false ]]; then
+  die "--no-stop ist nur für ein isoliertes Testziel mit --root zulässig"
+fi
 
 prefix_path() {
   if [[ "$root_prefix" == "/" ]]; then
@@ -181,11 +184,83 @@ write_firefox_policy() {
     --phase "$phase"
 }
 
+quiesce_service() {
+  [[ "$root_prefix" == "/" ]] || return 0
+
+  local unit="ubuntu-parental-control.service"
+  local unit_file
+  unit_file="$(prefix_path /etc/systemd/system/ubuntu-parental-control.service)"
+
+  if [[ -e "$unit_file" ]]; then
+    if ! systemctl disable --now "$unit"; then
+      die "Dienst konnte nicht gestoppt und deaktiviert werden; Deinstallation abgebrochen"
+    fi
+  elif systemctl is-active --quiet "$unit"; then
+    if ! systemctl stop "$unit"; then
+      die "noch geladener Dienst konnte nicht gestoppt werden; Deinstallation abgebrochen"
+    fi
+  fi
+
+  if systemctl is-active --quiet "$unit"; then
+    die "Dienst läuft weiterhin; Deinstallation abgebrochen"
+  fi
+}
+
+remove_installed_components() {
+  rm -f -- "$(prefix_path /etc/systemd/system/ubuntu-parental-control.service)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/daemon.py)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/rule_validator.py)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/managed_policy.py)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/user_rules.py)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/control_server.py)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/native_host.py)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/admin_helper.py)"
+  rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/upcctl.py)"
+  rm -f -- "$(prefix_path /usr/sbin/upcctl)"
+  rm -f -- "$(prefix_path /usr/bin/upc-firefox-consent)"
+  rm -f -- "$(prefix_path /usr/share/applications/ubuntu-parental-control-firefox-consent.desktop)"
+  rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/rules.last-known-good.json)"
+  rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json)"
+  rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json.lock)"
+  rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/live-signing-key.pem)"
+  rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/snapshot-generation)"
+  rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/snapshot-generation.lock)"
+  rm -f -- "$(prefix_path /usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json)"
+  rm -f -- "$(prefix_path /etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json)"
+  rm -f -- "$(prefix_path /usr/share/polkit-1/actions/local.ubuntu-parental-control.policy)"
+  rm -rf -- "$RULE_HISTORY_DIR"
+  rm -f -- "$(prefix_path /etc/firefox/policies/extensions/webfilter.xpi)"
+  rm -f -- "$(prefix_path /usr/local/share/ubuntu-parental-control/webfilter.xpi)"
+  rm -f -- "$(prefix_path /etc/ubuntu-parental-control/config.json)"
+  rm -f -- "$(prefix_path /etc/ubuntu-parental-control/rules.json)"
+  restore_original_chrome_policy
+
+  rmdir --ignore-fail-on-non-empty \
+    "$(prefix_path /usr/lib/ubuntu-parental-control)" \
+    "$(prefix_path /etc/firefox/policies/extensions)" \
+    "$(prefix_path /usr/local/share/ubuntu-parental-control)" \
+    "$(prefix_path /etc/ubuntu-parental-control)" \
+    "$STATE_DIR" 2>/dev/null || true
+
+  if [[ "$root_prefix" == "/" ]]; then
+    if command -v update-desktop-database >/dev/null; then
+      update-desktop-database /usr/share/applications
+    fi
+    systemctl daemon-reload
+  fi
+}
+
 wait_for_unlock_restart() {
   echo
   echo "Firefox muss die bisher erzwungene Extension zuerst freigeben."
-  echo "1. Firefox in jedem betroffenen Benutzerkonto vollständig starten."
-  echo "2. Firefox wieder vollständig schließen."
+  echo "Diesen Schritt kann das Elternkonto nicht für andere Benutzerprofile übernehmen:"
+  echo "Firefox verarbeitet Systemrichtlinien erst beim Start des jeweiligen Profils."
+  echo "Das Kind muss nichts erlauben und kein Passwort eingeben."
+  echo
+  echo "1. In jedes betroffene Benutzerkonto grafisch anmelden – auch in das Kinderkonto."
+  echo "2. Dort Firefox vollständig starten."
+  echo "3. Firefox wieder vollständig schließen."
+  echo "4. Erst danach in diesem Terminal fortfahren."
   echo
   if ! read -r -p "Danach hier die Eingabetaste drücken, um die Entfernung vorzubereiten: "; then
     echo >&2
@@ -200,9 +275,14 @@ wait_for_unlock_restart() {
 wait_for_uninstall_restart() {
   echo
   echo "Firefox muss die Extension jetzt selbst entfernen."
-  echo "1. Firefox in jedem betroffenen Benutzerkonto vollständig starten."
-  echo "2. Prüfen, dass die Extension unter about:addons verschwunden ist."
-  echo "3. Firefox wieder vollständig schließen."
+  echo "Auch diese zweite Policy-Änderung muss jedes Firefox-Profil selbst verarbeiten."
+  echo "Das Elternkonto kann ein geschlossenes Kinderprofil nicht sicher aktualisieren."
+  echo
+  echo "1. Erneut in jedes betroffene Benutzerkonto grafisch anmelden."
+  echo "2. Dort Firefox vollständig starten."
+  echo "3. Prüfen, dass die Extension unter about:addons verschwunden ist."
+  echo "4. Firefox wieder vollständig schließen."
+  echo "5. Erst danach in diesem Terminal fortfahren."
   echo
   if ! read -r -p "Danach hier die Eingabetaste drücken, um die Entfernung zu prüfen: "; then
     echo >&2
@@ -215,9 +295,13 @@ wait_for_uninstall_restart() {
   finish_uninstall
 }
 
+quiesce_service
+
 if [[ "$finalize" == true ]]; then
   [[ "$uninstall_phase" == "uninstall_pending" ]] || \
     die "Firefox muss vor dem Finalisieren beide Deinstallationsphasen verarbeiten"
+  write_firefox_policy uninstall
+  remove_installed_components
   verify_firefox_removed || exit 3
   finish_uninstall
   exit 0
@@ -228,6 +312,8 @@ if [[ "$uninstall_phase" == "unlock_pending" ]]; then
     die "Deinstallation wartet auf den Firefox-Neustart zum Freigeben der Extension"
   fi
   echo "Eine unterbrochene Deinstallation wird fortgesetzt."
+  write_firefox_policy unlock
+  remove_installed_components
   wait_for_unlock_restart
   wait_for_uninstall_restart
   exit 0
@@ -238,62 +324,15 @@ if [[ "$uninstall_phase" == "uninstall_pending" ]]; then
     die "Deinstallation wartet auf den Firefox-Neustart zum Entfernen der Extension"
   fi
   echo "Eine unterbrochene Deinstallation wird fortgesetzt."
+  write_firefox_policy uninstall
+  remove_installed_components
   wait_for_uninstall_restart
   exit 0
 fi
 
-if [[ "$root_prefix" == "/" ]]; then
-  if [[ "$stop_service" == true ]]; then
-    systemctl disable --now ubuntu-parental-control.service 2>/dev/null || true
-  else
-    systemctl disable ubuntu-parental-control.service 2>/dev/null || true
-  fi
-fi
-
 write_firefox_policy unlock
 write_uninstall_phase unlock_pending
-
-rm -f -- "$(prefix_path /etc/systemd/system/ubuntu-parental-control.service)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/daemon.py)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/rule_validator.py)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/managed_policy.py)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/user_rules.py)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/control_server.py)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/native_host.py)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/admin_helper.py)"
-rm -f -- "$(prefix_path /usr/lib/ubuntu-parental-control/upcctl.py)"
-rm -f -- "$(prefix_path /usr/sbin/upcctl)"
-rm -f -- "$(prefix_path /usr/bin/upc-firefox-consent)"
-rm -f -- "$(prefix_path /usr/share/applications/ubuntu-parental-control-firefox-consent.desktop)"
-rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/rules.last-known-good.json)"
-rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json)"
-rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/user-domains.json.lock)"
-rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/live-signing-key.pem)"
-rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/snapshot-generation)"
-rm -f -- "$(prefix_path /var/lib/ubuntu-parental-control/snapshot-generation.lock)"
-rm -f -- "$(prefix_path /usr/lib/mozilla/native-messaging-hosts/ubuntu_parental_control.json)"
-rm -f -- "$(prefix_path /etc/opt/chrome/native-messaging-hosts/ubuntu_parental_control.json)"
-rm -f -- "$(prefix_path /usr/share/polkit-1/actions/local.ubuntu-parental-control.policy)"
-rm -rf -- "$RULE_HISTORY_DIR"
-rm -f -- "$(prefix_path /etc/firefox/policies/extensions/webfilter.xpi)"
-rm -f -- "$(prefix_path /usr/local/share/ubuntu-parental-control/webfilter.xpi)"
-rm -f -- "$(prefix_path /etc/ubuntu-parental-control/config.json)"
-rm -f -- "$(prefix_path /etc/ubuntu-parental-control/rules.json)"
-restore_original_chrome_policy
-
-rmdir --ignore-fail-on-non-empty \
-  "$(prefix_path /usr/lib/ubuntu-parental-control)" \
-  "$(prefix_path /etc/firefox/policies/extensions)" \
-  "$(prefix_path /usr/local/share/ubuntu-parental-control)" \
-  "$(prefix_path /etc/ubuntu-parental-control)" \
-  "$STATE_DIR" 2>/dev/null || true
-
-if [[ "$root_prefix" == "/" ]]; then
-  if command -v update-desktop-database >/dev/null; then
-    update-desktop-database /usr/share/applications
-  fi
-  systemctl daemon-reload
-fi
+remove_installed_components
 
 echo "Firefox-Freigabephase vorbereitet."
 if [[ "$prepare_only" == true ]]; then

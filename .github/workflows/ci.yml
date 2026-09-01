@@ -27,6 +27,8 @@ jobs:
           package-manager-cache: false
       - name: Check options-page syntax
         run: node --check browser-extension/options/options.js
+      - name: Check test-protocol syntax
+        run: node --check tools/test_protocol_web/static/app.js
       - name: Run JavaScript tests
         shell: bash
         run: |

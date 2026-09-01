@@ -217,11 +217,14 @@ class UserDomainStore:
             os.close(descriptor)
 
     def load(self) -> dict[str, Any]:
-        if not self.path.exists():
-            return empty_user_rules()
-        if self.path.is_symlink() or not self.path.is_file():
-            raise UserRuleError(f"Benutzerregeln sind keine reguläre Datei: {self.path}")
-        mode = stat.S_IMODE(self.path.stat().st_mode)
+        try:
+            if not self.path.exists():
+                return empty_user_rules()
+            if self.path.is_symlink() or not self.path.is_file():
+                raise UserRuleError(f"Benutzerregeln sind keine reguläre Datei: {self.path}")
+            mode = stat.S_IMODE(self.path.stat().st_mode)
+        except OSError as exc:
+            raise UserRuleError(f"Benutzerregeln können nicht geprüft werden: {exc}") from exc
         if mode & 0o077:
             raise UserRuleError(
                 f"Benutzerregeln sind nicht ausreichend geschützt ({mode:04o}): {self.path}"

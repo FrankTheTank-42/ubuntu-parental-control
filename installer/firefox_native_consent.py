@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from urllib.parse import urlparse
@@ -70,10 +71,17 @@ def status() -> str:
         if "not found" in str(exc).lower() or "nicht gefunden" in str(exc).lower():
             return "nicht entschieden"
         raise
-    if "'yes'" in result:
+    permissions = re.findall(r"['\"]([^'\"]*)['\"]", result)
+    if permissions == ["yes"]:
         return "erlaubt"
-    if "'no'" in result:
+    if permissions == ["no"]:
         return "verweigert"
+    # PermissionStore.GetPermission returns a string array. After
+    # DeletePermission, current GLib versions may represent the missing app
+    # decision as an empty typed array (`(@as [],)`) instead of raising a
+    # not-found error. Both forms mean that Firefox should ask again.
+    if not permissions and re.search(r"\[\s*\]", result):
+        return "nicht entschieden"
     return f"unbekannt ({result})"
 
 
